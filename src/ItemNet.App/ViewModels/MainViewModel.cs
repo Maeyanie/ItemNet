@@ -102,7 +102,7 @@ public sealed partial class MainViewModel : ObservableObject
             var progress = new Progress<string>(t => LoadingText = t);
             var settings = Settings;
             _ws = await Task.Run(() => Workspace.Open(settings, progress));
-            SourceText = _ws.Source.Description;
+            SourceText = _ws.SourceLabel;
             Databases.Clear();
             foreach (var db in _ws.Databases) Databases.Add(db);
             SelectedDatabase = _ws.TargetDb;

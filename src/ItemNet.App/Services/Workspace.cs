@@ -33,15 +33,23 @@ public sealed class Workspace : IDisposable
     public Dictionary<(uint, ItemGender), OmniSightItemRow> DbRows { get; private set; } = new();
     public Dictionary<(FormKey, ItemGender), CatalogEntry> CatalogEntries { get; private set; } = new();
 
+    /// <summary>What the title bar shows: the source, and whether MO2's VFS is supplying it.</summary>
+    public string SourceLabel { get; private init; } = "";
+
     public static Workspace Open(AppSettings settings, IProgress<string> progress)
     {
-        var source = settings.Mode == SourceMode.Mo2Profile
+        // Launched from MO2, the VFS already shows exactly what the game sees for the active
+        // profile, so that wins over a saved "read the profile directly" choice.
+        var underMo2 = AppSettings.RunningUnderMo2();
+        var gamePath = string.IsNullOrWhiteSpace(settings.GamePath) ? GameSource.DetectGamePath() ?? "" : settings.GamePath;
+        var source = settings.Mode == SourceMode.Mo2Profile && !underMo2
             ? GameSource.FromMo2(settings.Mo2Instance, string.IsNullOrEmpty(settings.Mo2Profile) ? null : settings.Mo2Profile, progress.Report)
-            : GameSource.FromGameFolder(settings.GamePath, progress.Report);
+            : GameSource.FromGameFolder(gamePath, progress.Report);
         progress.Report("Listing items…");
         var items = ItemIndex.Build(source.Game).OrderBy(i => i.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         var ws = new Workspace
         {
+            SourceLabel = source.Description + (underMo2 ? " (launched from MO2)" : ""),
             Source = source, Items = items, SkyrimNet = new SkyrimNetPaths(source),
             Catalog = new CatalogStore(string.IsNullOrWhiteSpace(settings.CatalogFolder) ? AppSettings.Folder : settings.CatalogFolder),
         };
