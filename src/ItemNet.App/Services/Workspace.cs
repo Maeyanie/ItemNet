@@ -42,6 +42,9 @@ public sealed class Workspace : IDisposable
         // profile, so that wins over a saved "read the profile directly" choice.
         var underMo2 = AppSettings.RunningUnderMo2();
         var gamePath = string.IsNullOrWhiteSpace(settings.GamePath) ? GameSource.DetectGamePath() ?? "" : settings.GamePath;
+        var inner = progress;
+        progress = new SyncProgress(s => { Log.Write("Load: " + s); inner.Report(s); });
+        Log.Write($"Opening {(settings.Mode == SourceMode.Mo2Profile && !underMo2 ? "MO2 profile" : "game folder " + gamePath)}");
         var source = settings.Mode == SourceMode.Mo2Profile && !underMo2
             ? GameSource.FromMo2(settings.Mo2Instance, string.IsNullOrEmpty(settings.Mo2Profile) ? null : settings.Mo2Profile, progress.Report)
             : GameSource.FromGameFolder(gamePath, progress.Report);
@@ -53,8 +56,10 @@ public sealed class Workspace : IDisposable
             Source = source, Items = items, SkyrimNet = new SkyrimNetPaths(source),
             Catalog = new CatalogStore(string.IsNullOrWhiteSpace(settings.CatalogFolder) ? AppSettings.Folder : settings.CatalogFolder),
         };
+        Log.Write($"Loaded {items.Count} items from {source.Game.Plugins.Count} plugins; {source.Files.LooseCount} loose and {source.Files.ArchivedCount} archived files");
         ws.RefreshCatalog();
         ws.Databases = ws.SkyrimNet.Databases();
+        Log.Write($"SkyrimNet databases: {string.Join(", ", ws.Databases.Select(d => d.Name))}");
         ws.SelectDatabase(ws.Databases.FirstOrDefault(d => d.Name.Equals(settings.TargetDb, StringComparison.OrdinalIgnoreCase)) ?? ws.Databases.FirstOrDefault());
         return ws;
     }
@@ -86,7 +91,13 @@ public sealed class Workspace : IDisposable
         {
             return await Task.Run(() =>
             {
-                _renderer ??= new ItemRenderer(Source.Files);
+                if (_renderer is null)
+                {
+                    Log.Write("Creating renderer");
+                    _renderer = new ItemRenderer(Source.Files);
+                    Log.Write("Renderer: " + _renderer.AdapterDescription);
+                }
+                Log.Write($"Render {e.Key} {gender}");
                 var plan = RenderPlanner.Plan(Source.Game, Armor(e), gender, mannequin: options.ShowMannequin);
                 var scene = SceneBuilder.Build(plan, Source.Files, options);
                 var views = _renderer.Render(scene, RenderSettings.ApparelViews, new RenderSettings { Size = size },
@@ -158,6 +169,12 @@ public sealed class Workspace : IDisposable
         Source.DataRootsLowestFirst.Reverse()
             .Select(r => Path.Combine(r, "SKSE", "Plugins", "SkyrimNet", "config"))
             .FirstOrDefault(d => File.Exists(Path.Combine(d, "Providers.yaml")));
+
+    /// <summary>IProgress that reports on the calling thread, so log lines keep their order.</summary>
+    private sealed class SyncProgress(Action<string> report) : IProgress<string>
+    {
+        public void Report(string value) => report(value);
+    }
 
     public static string DescribeRenderSettings(SceneOptions o, int size) =>
         JsonSerializer.Serialize(new { mannequin = o.ShowMannequin ? o.Mannequin.ToString() : "None", weight = o.Weight, size });
