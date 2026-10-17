@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ItemNet.App/ItemNet.App.csproj" />
+    <Project Path="src/ItemNet.Cli/ItemNet.Cli.csproj" />
+    <Project Path="src/ItemNet.Core/ItemNet.Core.csproj" />
+    <Project Path="src/ItemNet.Render/ItemNet.Render.csproj" />
+    <Project Path="src/ItemNet.Vision/ItemNet.Vision.csproj" />
+  </Folder>
+</Solution>
