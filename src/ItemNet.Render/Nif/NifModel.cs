@@ -88,6 +88,11 @@ public sealed class NifModel
     public required List<MeshPart> Parts { get; init; }
     /// <summary>World (root-relative) transforms of every named node in the file.</summary>
     public required Dictionary<string, Matrix4x4> NodeTransforms { get; init; }
+    /// <summary>
+    /// The root's "Prn" string extra data: the skeleton bone an unskinned model (backpacks, quivers,
+    /// some jewellery) is parented to when worn.
+    /// </summary>
+    public string? AttachBone { get; init; }
     public List<string> Warnings { get; } = [];
 
     public static NifModel Load(string path, byte[] data)
@@ -102,7 +107,11 @@ public sealed class NifModel
         var nodes = new Dictionary<string, Matrix4x4>(StringComparer.OrdinalIgnoreCase);
         foreach (var root in nif.GetRootNodes()) CollectNodes(nif, root, Matrix4x4.Identity, nodes);
 
-        var model = new NifModel { Path = path, Parts = [], NodeTransforms = nodes };
+        var prn = nif.GetRootNodes()
+            .SelectMany(r => r.ExtraDataList.GetBlocks(nif))
+            .OfType<NiStringExtraData>()
+            .FirstOrDefault(e => string.Equals(e.Name?.String, "Prn", StringComparison.OrdinalIgnoreCase))?.StringData?.String;
+        var model = new NifModel { Path = path, Parts = [], NodeTransforms = nodes, AttachBone = string.IsNullOrWhiteSpace(prn) ? null : prn };
         foreach (var shape in nif.GetShapes())
         {
             try

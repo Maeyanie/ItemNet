@@ -21,9 +21,16 @@ public static partial class Commands
 
         var nif = new NifFile();
         using (var ms = new MemoryStream(data)) nif.Load(ms, new NifFileLoadOptions());
+        foreach (var root in nif.GetRootNodes())
+            foreach (var ed in root.ExtraDataList.GetBlocks(nif))
+                Console.WriteLine($"root extra: {ed?.GetType().Name} '{(ed as NiflySharp.Interfaces.INiNamed)?.Name?.String}' = '{(ed as NiStringExtraData)?.StringData?.String}'");
         foreach (var shape in nif.GetShapes())
         {
             Console.WriteLine($"* '{(shape as NiflySharp.Interfaces.INiNamed)?.Name?.String}' {shape.GetType().Name}");
+            var chain = new List<string>();
+            for (var p = nif.GetParentNode(shape); p is not null; p = nif.GetParentNode(p))
+                chain.Add($"{(p as NiflySharp.Interfaces.INiNamed)?.Name?.String} ({p.GetType().Name}, t={p.Translation})");
+            Console.WriteLine($"  parents: {string.Join(" <- ", chain)}");
             if (nif.GetShader(shape) is { } shader)
             {
                 Console.WriteLine($"  shader {shader.GetType().Name}");

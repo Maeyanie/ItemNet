@@ -81,7 +81,7 @@ public static class SceneBuilder
                 var isBody = model.Role != ModelRole.Item || part.Material.SkinShader;
                 if (isBody && !options.ShowMannequin) continue;
                 var material = ApplyRecordTextures(part, model);
-                scene.Meshes.Add(Pose(part, model.Role, isBody, material, nif.NodeTransforms, skeleton));
+                scene.Meshes.Add(Pose(part, model.Role, isBody, material, nif.NodeTransforms, skeleton, nif.AttachBone));
             }
         }
         return scene;
@@ -119,7 +119,7 @@ public static class SceneBuilder
                 BoneNames = h.BoneNames, SkinToBone = h.SkinToBone, BoneIndices = h.BoneIndices, BoneWeights = h.BoneWeights,
             });
         }
-        var result = new NifModel { Path = heavy.Path, Parts = blended, NodeTransforms = heavy.NodeTransforms };
+        var result = new NifModel { Path = heavy.Path, Parts = blended, NodeTransforms = heavy.NodeTransforms, AttachBone = heavy.AttachBone };
         result.Warnings.AddRange(heavy.Warnings);
         return result;
     }
@@ -150,9 +150,13 @@ public static class SceneBuilder
     /// vertex into bone space (NiSkinData) and back out through the skeleton's bone.
     /// </summary>
     private static SceneMesh Pose(MeshPart part, ModelRole role, bool isBody, MaterialInfo material,
-        Dictionary<string, Matrix4x4> nifNodes, Dictionary<string, Matrix4x4>? skeleton)
+        Dictionary<string, Matrix4x4> nifNodes, Dictionary<string, Matrix4x4>? skeleton, string? attachBone)
     {
         var n = part.Positions.Length;
+        // Unskinned models with a Prn bone hang off that bone, as the game parents the whole NIF to it.
+        var rigid = attachBone is not null && skeleton is not null && skeleton.TryGetValue(attachBone, out var bone)
+            ? part.ShapeToRoot * bone
+            : part.ShapeToRoot;
         var pos = new Vector3[n];
         var nrm = new Vector3[n];
         var tan = new Vector3[n];
@@ -187,9 +191,9 @@ public static class SceneBuilder
                     m += boneMats[bi] * w;
                     total += w;
                 }
-                m = total > 0 ? m * (1 / total) : part.ShapeToRoot;
+                m = total > 0 ? m * (1 / total) : rigid;
             }
-            else m = part.ShapeToRoot;
+            else m = rigid;
 
             pos[v] = Vector3.Transform(part.Positions[v], m);
             nrm[v] = SafeNormalize(Vector3.TransformNormal(part.Normals[v], m));
