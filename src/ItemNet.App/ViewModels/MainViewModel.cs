@@ -397,7 +397,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException) { DescribeInfo = "Cancelled."; }
         catch (VisionException ex) { DescribeInfo = "Failed: " + ex.Message; RawReply = string.IsNullOrEmpty(ex.RawResponse) ? "" : "=== Full response ===\n" + VisionClient.Pretty(ex.RawResponse); }
-        catch (Exception ex) { DescribeInfo = "Failed: " + ex.Message; }
+        catch (Exception ex) { DescribeInfo = "Failed: " + ex.Message; Log.Write("Describe failed: " + ex); }
         finally { IsDescribing = false; }
     }
 

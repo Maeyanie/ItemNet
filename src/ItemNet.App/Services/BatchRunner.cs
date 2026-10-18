@@ -84,7 +84,8 @@ public static class BatchRunner
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
             catch (Exception e)
             {
-                Log.Write($"Batch: {job} failed: {e.Message}");
+                // API failures are self-explanatory; anything else gets its stack trace in the log.
+                Log.Write($"Batch: {job} failed: {(e is VisionException ? e.Message : e.ToString())}");
                 report(new BatchEvent(job, BatchOutcome.Failed, e.Message));
             }
         });

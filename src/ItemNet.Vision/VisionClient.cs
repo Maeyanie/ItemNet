@@ -110,7 +110,7 @@ public sealed partial class VisionClient(HttpClient http)
         }
 
         JsonNode? json;
-        try { json = JsonNode.Parse(text); }
+        try { json = ParseLenient(text); }
         catch (JsonException) { throw new VisionException("Response was not JSON: " + Truncate(text, 600), text, retryable: true); }
         // Errors can also arrive inside a 200, at the top level or on the choice (OpenRouter does both
         // when an upstream provider fails mid-request). Retry unless the code says it's final.
@@ -167,7 +167,7 @@ public sealed partial class VisionClient(HttpClient http)
         if (string.IsNullOrWhiteSpace(body)) return "";
         try
         {
-            return JsonNode.Parse(body)?.ToJsonString(new JsonSerializerOptions
+            return ParseLenient(body)?.ToJsonString(new JsonSerializerOptions
             {
                 WriteIndented = true,
                 Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
@@ -226,7 +226,7 @@ public sealed partial class VisionClient(HttpClient http)
         if (start < 0 || end <= start) throw new VisionException("No JSON object in the reply: " + Truncate(content, 400), content);
 
         JsonObject? obj;
-        try { obj = JsonNode.Parse(text[start..(end + 1)]) as JsonObject; }
+        try { obj = ParseLenient(text[start..(end + 1)]) as JsonObject; }
         catch (JsonException e) { throw new VisionException($"Reply JSON is malformed ({e.Message}): {Truncate(content, 400)}", content); }
 
         string? Field(params string[] names) => obj?.FirstOrDefault(kv => names.Contains(kv.Key, StringComparer.OrdinalIgnoreCase)).Value?.GetValue<string>();
@@ -234,6 +234,35 @@ public sealed partial class VisionClient(HttpClient http)
         var description = Field("description", "desc") ?? "";
         if (description.Length == 0) throw new VisionException("Reply JSON has no description: " + Truncate(content, 400), content);
         return (name.Trim(), description.Trim());
+    }
+
+    /// <summary>
+    /// <see cref="JsonNode.Parse(string, JsonNodeOptions?, JsonDocumentOptions)"/>, but a repeated key
+    /// keeps its last value (as in JavaScript) instead of failing. JsonObject parses lazily and then
+    /// throws ArgumentException ("An item with the same key has already been added") on the first
+    /// lookup; models sometimes write "description" twice. Invalid JSON still throws JsonException.
+    /// </summary>
+    public static JsonNode? ParseLenient(string text)
+    {
+        using var doc = JsonDocument.Parse(text);
+        return ToNode(doc.RootElement);
+    }
+
+    private static JsonNode? ToNode(JsonElement e)
+    {
+        switch (e.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var obj = new JsonObject();
+                foreach (var p in e.EnumerateObject()) obj[p.Name] = ToNode(p.Value);
+                return obj;
+            case JsonValueKind.Array:
+                return new JsonArray(e.EnumerateArray().Select(ToNode).ToArray());
+            case JsonValueKind.Null or JsonValueKind.Undefined:
+                return null;
+            default:
+                return JsonValue.Create(e.Clone());
+        }
     }
 
     private static TimeSpan? RetryAfter(HttpResponseMessage response)
