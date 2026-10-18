@@ -3,10 +3,12 @@ using ItemNet.Core.FileSystem;
 using ItemNet.Core.Mo2;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Binary.Parameters;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
+using Mutagen.Bethesda.Strings;
 
 namespace ItemNet.Core.Plugins;
 
@@ -88,13 +90,29 @@ public sealed class GameData : IDisposable
             var path = fs.GetLoosePath(name);
             if (path is null) { missing.Add(name); continue; }
             var modKey = ModKey.FromFileName(name);
-            var mod = SkyrimMod.CreateFromBinaryOverlay(new ModPath(modKey, path), SkyrimRelease.SkyrimSE);
+            var mod = SkyrimMod.CreateFromBinaryOverlay(new ModPath(modKey, path), SkyrimRelease.SkyrimSE,
+                new BinaryReadParameters { StringsParam = StringsLocation(modKey, fs) });
             var flags = mod.ModHeader.Flags;
             var isLight = modKey.Type == ModType.Light || flags.HasFlag(SkyrimModHeader.HeaderFlag.Small);
             var isMaster = modKey.Type != ModType.Plugin || flags.HasFlag(SkyrimModHeader.HeaderFlag.Master);
             plugins.Add(new PluginInfo(modKey, path, isLight, isMaster, isLight ? light++ : full++, mod));
         }
         return new GameData(plugins, missing, sw.Elapsed);
+    }
+
+    /// <summary>
+    /// Mutagen looks for a localized plugin's strings beside the plugin. Read straight from an MO2
+    /// profile, the plugin and its strings can come from different places (cleaned DLC masters in a
+    /// mod, their strings still in the game's archives), which leaves names empty. Point it at
+    /// wherever the winning copy is.
+    /// </summary>
+    private static StringsReadParameters? StringsLocation(ModKey modKey, IGameFileSystem fs)
+    {
+        if (fs.Locate($@"strings\{modKey.Name}_english.strings") is not { } where) return null;
+        var dir = Path.GetDirectoryName(where.FullPath)!;
+        return where.InArchive
+            ? new StringsReadParameters { BsaFolderOverride = dir }
+            : new StringsReadParameters { StringsFolderOverride = dir };
     }
 
     public PluginInfo? GetPlugin(ModKey key) => _byKey.GetValueOrDefault(key);

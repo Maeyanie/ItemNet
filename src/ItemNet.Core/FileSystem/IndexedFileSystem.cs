@@ -134,4 +134,12 @@ public sealed class IndexedFileSystem : IGameFileSystem
 
     public string? GetLoosePath(string path) =>
         _loose.TryGetValue(IGameFileSystem.Normalize(path), out var f) ? f.FullPath : null;
+
+    public (string FullPath, bool InArchive)? Locate(string path)
+    {
+        var key = IGameFileSystem.Normalize(path);
+        if (_loose.TryGetValue(key, out var loose)) return (loose.FullPath, false);
+        if (_archived.TryGetValue(key, out var arch) && GetLoosePath(arch.ArchiveName) is { } archive) return (archive, true);
+        return null;
+    }
 }

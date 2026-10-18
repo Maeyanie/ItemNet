@@ -11,6 +11,7 @@ try
         "lo" => Commands.LoadOrder(opts),
         "parity" => Commands.Parity(opts),
         "hashtest" => Commands.HashTest(opts),
+        "items" => Commands.Items(opts),
         "plan" => Commands.Plan(opts),
         "render" => Commands.Render(opts),
         "skintest" => Commands.SkinTest(opts),
@@ -32,6 +33,8 @@ static int Usage()
         ItemNet.Cli <command> [options]
           lo                       load order + file system summary, checked against MO2's loadorder.txt
           parity --db <path>       map SkyrimNet OmniSight item rows back to records and compare names
+          items [--out <file>]     the GUI's item list, sorted by FormKey, for diffing two sources
+                [--why <keys>]     plus each override of those FormKeys, with the file it came from
         """);
     return 2;
 }

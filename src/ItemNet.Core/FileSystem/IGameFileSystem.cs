@@ -17,6 +17,9 @@ public interface IGameFileSystem
     /// <summary>Physical path of a loose file (plugins, BSAs), or null if it only exists in an archive.</summary>
     string? GetLoosePath(string path);
 
+    /// <summary>Physical location of the winning copy: the loose file, or the archive that holds it.</summary>
+    (string FullPath, bool InArchive)? Locate(string path);
+
     static string Normalize(string path)
     {
         var p = path.Replace('/', '\\').TrimStart('\\');
