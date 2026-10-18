@@ -4,5 +4,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- .NET 9+ marks the apphost CET-compatible. On CPUs that enforce shadow stacks, MO2's usvfs
+         hooks then crash the host before the runtime loads (AV at hook trampoline +0xB7). -->
+    <CETCompat>false</CETCompat>
   </PropertyGroup>
 </Project>

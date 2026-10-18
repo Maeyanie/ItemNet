@@ -69,8 +69,9 @@
                     <ListView ItemsSource="{Binding ItemsView}" SelectedItem="{Binding Selected}"
                               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.ItemContainerStyle>
-                            <!-- The Fluent theme's rows are touch-sized; keep the list dense. -->
-                            <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                            <!-- The Fluent theme's rows are touch-sized; keep the list dense. Based on
+                                 the GridView row style: the plain ListViewItem one has no columns. -->
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                                 <Setter Property="MinHeight" Value="24"/>
                                 <Setter Property="Padding" Value="4,1"/>
                             </Style>
