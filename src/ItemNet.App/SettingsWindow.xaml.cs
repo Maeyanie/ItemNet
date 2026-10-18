@@ -42,6 +42,7 @@ public partial class SettingsWindow : Window
 
         PromptBox.Text = settings.PromptTemplate ?? PromptTemplate.Default;
         RenderSizeBox.Text = settings.RenderSize.ToString(CultureInfo.InvariantCulture);
+        ThemeBox.Text = settings.Theme;
         CatalogFolder.Text = settings.CatalogFolder;
         ProjectLink.NavigateUri = new Uri(VisionClient.ProjectUrl);
     }
@@ -148,6 +149,7 @@ public partial class SettingsWindow : Window
             _settings.PromptTemplate = PromptBox.Text.Trim() == PromptTemplate.Default.Trim() ? null : PromptBox.Text;
             if (int.TryParse(RenderSizeBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var size)) _settings.RenderSize = Math.Clamp(size, 128, 2048);
             _settings.CatalogFolder = CatalogFolder.Text.Trim();
+            _settings.Theme = string.IsNullOrEmpty(ThemeBox.Text) ? "Dark" : ThemeBox.Text;
         }
         catch (Exception ex)
         {

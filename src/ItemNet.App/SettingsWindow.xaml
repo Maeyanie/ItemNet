@@ -2,14 +2,15 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ItemNet settings" Width="1100" Height="720" MinWidth="800" MinHeight="500"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource ApplicationBackgroundBrush}" Foreground="{DynamicResource TextFillColorPrimaryBrush}">
     <Window.Resources>
-        <Style TargetType="Button">
+        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Padding" Value="12,4"/>
             <Setter Property="Margin" Value="0,0,6,0"/>
         </Style>
         <Style x:Key="Hint" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#666"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="Margin" Value="0,4,0,8"/>
         </Style>
@@ -61,7 +62,7 @@
                             <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="320"/>
                             <DataGridTemplateColumn Header="API key" Width="140">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate><TextBlock Text="{Binding MaskedKey}" Foreground="#666"/></DataTemplate>
+                                    <DataTemplate><TextBlock Text="{Binding MaskedKey}" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/></DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                                 <DataGridTemplateColumn.CellEditingTemplate>
                                     <DataTemplate><TextBox Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}"/></DataTemplate>
@@ -109,8 +110,16 @@
                 </DockPanel>
             </TabItem>
 
-            <TabItem Header="Rendering &amp; storage">
+            <TabItem Header="Appearance &amp; storage">
                 <StackPanel Margin="12">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="Theme:" VerticalAlignment="Center" Width="150"/>
+                        <ComboBox x:Name="ThemeBox" Width="100">
+                            <ComboBoxItem Content="Dark"/>
+                            <ComboBoxItem Content="Light"/>
+                            <ComboBoxItem Content="System"/>
+                        </ComboBox>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Image size per view:" VerticalAlignment="Center" Width="150"/>
                         <ComboBox x:Name="RenderSizeBox" Width="100">
@@ -119,7 +128,7 @@
                             <ComboBoxItem Content="768"/>
                             <ComboBoxItem Content="1024"/>
                         </ComboBox>
-                        <TextBlock Text="SkyrimNet uses 512." Foreground="#666" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        <TextBlock Text="SkyrimNet uses 512." Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
                     </StackPanel>
                     <DockPanel Margin="0,0,0,4">
                         <TextBlock Text="Catalog folder:" VerticalAlignment="Center" Width="150"/>

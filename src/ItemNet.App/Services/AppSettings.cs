@@ -32,6 +32,9 @@ public sealed class AppSettings
     /// <summary>Null means the built-in default prompt.</summary>
     public string? PromptTemplate { get; set; }
 
+    /// <summary>"Dark", "Light" or "System".</summary>
+    public string Theme { get; set; } = "Dark";
+
     public MannequinStyle Mannequin { get; set; } = MannequinStyle.Textured;
     public float Weight { get; set; } = 0.5f;
     public int RenderSize { get; set; } = 512;

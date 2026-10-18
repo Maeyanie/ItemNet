@@ -349,15 +349,25 @@ public sealed partial class MainViewModel : ObservableObject
             SuggestedName = _generatedName = r.SuggestedName;
             Description = _generatedDescription = r.Description;
             _generatedModel = model.Model;
-            RawReply = r.RawContent;
+            RawReply = FormatRawReply(r);
             DescribeInfo = $"{r.Model} in {r.Elapsed.TotalSeconds:F0}s"
                 + (r.PromptTokens is { } pt ? $", {pt:N0} in / {r.CompletionTokens:N0} out tokens" : "")
                 + (r.Cost is { } c ? $", ${c:F4}" : "");
         }
         catch (OperationCanceledException) { DescribeInfo = "Cancelled."; }
-        catch (VisionException ex) { DescribeInfo = "Failed: " + ex.Message; RawReply = ex.RawResponse ?? ""; }
+        catch (VisionException ex) { DescribeInfo = "Failed: " + ex.Message; RawReply = string.IsNullOrEmpty(ex.RawResponse) ? "" : "=== Full response ===\n" + VisionClient.Pretty(ex.RawResponse); }
         catch (Exception ex) { DescribeInfo = "Failed: " + ex.Message; }
         finally { IsDescribing = false; }
+    }
+
+    /// <summary>Reasoning first (when the model gave one), then the reply text, then the whole response body.</summary>
+    private static string FormatRawReply(DescriptionResult r)
+    {
+        var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(r.Reasoning)) sb.Append("=== Reasoning ===\n").Append(r.Reasoning.Trim()).Append("\n\n");
+        sb.Append("=== Reply ===\n").Append(r.RawContent.Trim()).Append("\n\n");
+        sb.Append("=== Full response ===\n").Append(r.FullResponse);
+        return sb.ToString();
     }
 
     // ---- save ----------------------------------------------------------------------------------

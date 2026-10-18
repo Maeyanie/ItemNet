@@ -24,9 +24,23 @@ public partial class App : Application
             settings.Save();
         }
 
+        ApplyTheme(settings.Theme);
         var window = new MainWindow(new MainViewModel(settings));
         MainWindow = window;
         window.Show();
+    }
+
+    /// <summary>WPF's built-in Fluent theme; it restyles every standard control, title bar included.</summary>
+    public static void ApplyTheme(string theme)
+    {
+#pragma warning disable WPF0001 // ThemeMode is marked experimental
+        Current.ThemeMode = theme switch
+        {
+            "Light" => ThemeMode.Light,
+            "System" => ThemeMode.System,
+            _ => ThemeMode.Dark,
+        };
+#pragma warning restore WPF0001
     }
 
     private static void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)

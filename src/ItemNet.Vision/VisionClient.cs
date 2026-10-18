@@ -14,10 +14,15 @@ public sealed record DescriptionResult(
     int? PromptTokens,
     int? CompletionTokens,
     double? Cost,
-    TimeSpan Elapsed);
+    TimeSpan Elapsed,
+    /// <summary>The model's reasoning trace, when the provider returns one.</summary>
+    string? Reasoning,
+    /// <summary>The whole response body, pretty-printed.</summary>
+    string FullResponse);
 
 public sealed class VisionException(string message, string? rawResponse = null) : Exception(message)
 {
+    /// <summary>The whole response body when there was one (pretty-print with <see cref="VisionClient.Pretty"/>).</summary>
     public string? RawResponse { get; } = rawResponse;
 }
 
@@ -63,12 +68,50 @@ public sealed partial class VisionClient(HttpClient http)
         if (string.IsNullOrWhiteSpace(content))
             throw new VisionException("The model returned no content (it may have used its whole token budget on reasoning).", text);
 
-        var (name, description) = ParseDescription(content);
+        string name, description;
+        try { (name, description) = ParseDescription(content); }
+        catch (VisionException e) { throw new VisionException(e.Message, text); } // keep the whole body for the raw view
+
         var usage = json?["usage"];
         return new DescriptionResult(name, description, json?["model"]?.GetValue<string>() ?? model.Model, content,
             usage?["prompt_tokens"]?.GetValue<int>(), usage?["completion_tokens"]?.GetValue<int>(),
             usage?["cost"] is JsonValue c && c.TryGetValue<double>(out var cost) ? cost : null,
-            DateTime.UtcNow - started);
+            DateTime.UtcNow - started, ExtractReasoning(message, content), Pretty(text));
+    }
+
+    /// <summary>
+    /// The reasoning trace, wherever this provider put it: OpenRouter's "reasoning" and
+    /// "reasoning_details", "reasoning_content" (DeepSeek, vLLM, llama.cpp), or &lt;think&gt; tags
+    /// inside the content.
+    /// </summary>
+    private static string? ExtractReasoning(JsonNode? message, string content)
+    {
+        static string? Str(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out var s) && !string.IsNullOrWhiteSpace(s) ? s : null;
+
+        if (Str(message?["reasoning"]) is { } r) return r;
+        if (Str(message?["reasoning_content"]) is { } rc) return rc;
+        if (message?["reasoning_details"] is JsonArray details)
+        {
+            var parts = details.Select(d => Str(d?["text"]) ?? Str(d?["summary"])).Where(s => s is not null).ToList();
+            if (parts.Count > 0) return string.Join("\n\n", parts);
+        }
+        var think = ThinkTags().Matches(content).Select(m => m.Value[7..^8].Trim()).Where(s => s.Length > 0).ToList();
+        return think.Count > 0 ? string.Join("\n\n", think) : null;
+    }
+
+    /// <summary>Indented JSON with readable (unescaped) text, or the input unchanged if it isn't JSON.</summary>
+    public static string Pretty(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return "";
+        try
+        {
+            return JsonNode.Parse(body)?.ToJsonString(new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            }) ?? body;
+        }
+        catch (JsonException) { return body; }
     }
 
     public static JsonObject BuildBody(ProviderConfig provider, VisionModelConfig model, string prompt, IReadOnlyList<byte[]> pngImages)
