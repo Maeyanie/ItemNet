@@ -25,14 +25,85 @@ internal static class Shaders
             float4 Emissive;  // rgb emissive colour
             float4 UvXform;   // xy offset, zw scale
             float4 ClayColor;
+            float4 Pbr;       // x TruePBR, y roughness scale, z specular level, w fuzz weight
+            float4 FuzzColor; // rgb fuzz tint, w has features texture
         };
 
         Texture2D Diffuse : register(t0);
         Texture2D NormalMap : register(t1);
-        Texture2D EnvMask : register(t2);
+        Texture2D EnvMask : register(t2);   // RMAOS for TruePBR
         Texture2D GlowMap : register(t3);
         TextureCube EnvCube : register(t4);
+        Texture2D Features : register(t5);  // TruePBR fuzz: rgb tint, a weight
         SamplerState Samp : register(s0);
+
+        static const float PI = 3.14159265;
+
+        // [Karis 2014] analytic fit of the split-sum environment BRDF.
+        float3 EnvBRDFApprox(float3 F0, float rough, float NdV)
+        {
+            const float4 c0 = float4(-1, -0.0275, -0.572, 0.022);
+            const float4 c1 = float4(1, 0.0425, 1.04, -0.04);
+            float4 r = rough * c0 + c1;
+            float a004 = min(r.x * r.x, exp2(-9.28 * NdV)) * r.x + r.y;
+            float2 AB = float2(-1.04, 1.04) * a004 + r.zw;
+            return F0 * AB.x + AB.y;
+        }
+
+        // Community Shaders' TruePBR, without its screen-space and multi-layer extras: GGX + Smith
+        // specular, Lambert diffuse, and the fuzz (cloth sheen) lobe. Our light colours already carry
+        // the 1/pi of the Lambert term, hence the pi on the specular.
+        float3 ShadePbr(float3 albedo, float3 N, float3 V, float2 uv, float hemi)
+        {
+            float4 rmaos = EnvMask.Sample(Samp, uv);
+            float rough = clamp(rmaos.r * Pbr.y, 0.05, 1);
+            float metal = saturate(rmaos.g);
+            float ao = rmaos.b;
+            float3 F0 = lerp((rmaos.a * Pbr.z).xxx, albedo, metal);
+            float3 diffuse = albedo * (1 - metal);
+            float3 fuzzColor = FuzzColor.rgb;
+            float fuzzWeight = Pbr.w;
+            if (FuzzColor.w > 0)
+            {
+                float4 f = Features.Sample(Samp, uv);
+                fuzzColor *= f.rgb;
+                fuzzWeight *= f.a;
+            }
+
+            float NdV = max(dot(N, V), 1e-4);
+            float3 color = (diffuse + fuzzColor * fuzzWeight) * lerp(GroundAmbient.rgb, Ambient.rgb, hemi) * ao;
+            float a = rough * rough;
+            float a2 = a * a;
+            [unroll] for (int k = 0; k < 3; k++)
+            {
+                float3 L = -LightDir[k].xyz;
+                float NdL = saturate(dot(N, L));
+                float3 H = normalize(L + V);
+                float NdH = saturate(dot(N, H));
+                float VdH = saturate(dot(V, H));
+                float d = NdH * NdH * (a2 - 1) + 1;
+                float D = a2 / (PI * d * d);
+                float Vis = 0.5 / max(NdL * (NdV * (1 - a) + a) + NdV * (NdL * (1 - a) + a), 1e-4);
+                float Fc = pow(1 - VdH, 5);
+                float3 F = F0 + (1 - F0) * Fc;
+                float3 spec = D * Vis * F;
+                if (fuzzWeight > 0)
+                {
+                    float inv = pow(rough, -4);
+                    float Dc = (2 + inv) * pow(saturate(1 - NdH * NdH), inv * 0.5) / (2 * PI);
+                    float Vn = 1 / (4 * max(NdL + NdV - NdL * NdV, 1e-4));
+                    spec = lerp(spec, Dc * Vn * (fuzzColor + (1 - fuzzColor) * Fc), fuzzWeight);
+                }
+                color += (diffuse * (1 - F) + PI * spec) * LightColor[k].rgb * NdL;
+            }
+
+            // No cube map comes with these materials, so reflect the studio itself: the same sky/ground
+            // gradient as the ambient light, a little brighter overhead.
+            float3 R = reflect(-V, N);
+            float3 env = lerp(GroundAmbient.rgb, Ambient.rgb * 1.5, saturate(R.z * 0.5 + 0.5));
+            color += env * EnvBRDFApprox(F0, rough, NdV) * ao;
+            return color;
+        }
 
         struct VSIn
         {
@@ -90,13 +161,22 @@ internal static class Shaders
             {
                 float4 nm = NormalMap.Sample(Samp, i.uv);
                 float3 n = nm.xyz * 2 - 1;
+                // Bethesda's stored "bitangent" runs along +U and its "tangent" along V, so X goes
+                // with the bitangent, as in the game's own TBN (BINORMAL0 carries the tangent field).
                 float3 t = normalize(i.tan) * facing;
                 float3 b = normalize(i.bit) * facing;
-                N = normalize(t * n.x + b * n.y + N * n.z);
+                N = normalize(b * n.x + t * n.y + N * n.z);
                 specMask = nm.a;
             }
 
             float hemi = N.z * 0.5 + 0.5;
+            if (Pbr.x > 0 && !clay)
+            {
+                float3 lit = ShadePbr(albedo, N, V, i.uv, hemi);
+                if (Flags0.w > 0)
+                    lit += GlowMap.Sample(Samp, i.uv).rgb * Emissive.rgb * Params.z;
+                return float4(saturate(lit), Flags1.x == 2 ? alpha : 1);
+            }
             float3 color = albedo * lerp(GroundAmbient.rgb, Ambient.rgb, hemi);
             float gloss = max(Params.x, 2);
             [unroll] for (int k = 0; k < 3; k++)

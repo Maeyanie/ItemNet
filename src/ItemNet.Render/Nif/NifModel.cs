@@ -10,8 +10,21 @@ public enum AlphaMode { Opaque, Test, Blend }
 
 public sealed class MaterialInfo
 {
-    /// <summary>BSShaderTextureSet slots: 0 diffuse, 1 normal, 2 env mask / subsurface, 3 glow, 4 height, 5 env cube, 6 multilayer, 7 backlight/specular.</summary>
+    /// <summary>
+    /// BSShaderTextureSet slots: 0 diffuse, 1 normal, 2 glow / skin subsurface, 3 height, 4 env cube,
+    /// 5 env mask, 6 multilayer inner, 7 backlight / skin specular. TruePBR reuses them: 2 emissive,
+    /// 3 displacement, 5 RMAOS, 6 features 1 (fuzz/coat), 7 features 0 (subsurface).
+    /// </summary>
     public string?[] Textures { get; set; } = new string?[8];
+    /// <summary>Community Shaders TruePBR material (as PGPatcher/ParallaxGen writes them).</summary>
+    public bool Pbr { get; set; }
+    /// <summary>TruePBR: multiplies RMAOS red (the NIF's specular strength field).</summary>
+    public float PbrRoughnessScale { get; set; } = 1;
+    /// <summary>TruePBR: multiplies RMAOS alpha into F0 (the NIF's glossiness field).</summary>
+    public float PbrSpecularLevel { get; set; } = 0.04f;
+    /// <summary>TruePBR fuzz (cloth sheen): tint and weight, both scaled by the slot 6 texture.</summary>
+    public Vector3 FuzzColor { get; set; }
+    public float FuzzWeight { get; set; }
     public bool DoubleSided { get; set; }
     public bool ModelSpaceNormals { get; set; }
     public bool SkinShader { get; set; }
@@ -32,6 +45,13 @@ public sealed class MaterialInfo
     public Vector2 UvScale { get; set; } = Vector2.One;
     public AlphaMode AlphaMode { get; set; }
     public float AlphaThreshold { get; set; } = 0.5f;
+
+    public MaterialInfo Clone()
+    {
+        var copy = (MaterialInfo)MemberwiseClone();
+        copy.Textures = (string?[])Textures.Clone();
+        return copy;
+    }
 }
 
 /// <summary>One drawable shape, still in its NIF's own space (unskinned or skin space).</summary>
@@ -159,7 +179,7 @@ public sealed class NifModel
             if (bs.HasTangents)
             {
                 tan = vd.Select(v => Unpack(v.Tangent)).ToArray();
-                bit = vd.Select(v => new Vector3(v.BitangentX, v.BitangentY / 127.5f, v.BitangentZ / 127.5f)).ToArray();
+                bit = vd.Select(v => new Vector3(v.BitangentX, Unorm8(v.BitangentY), Unorm8(v.BitangentZ))).ToArray();
             }
             uv = bs.HasUVs ? vd.Select(v => new Vector2((float)v.UV.U, (float)v.UV.V)).ToArray() : new Vector2[pos.Length];
             if (bs.HasVertexColors)
@@ -232,7 +252,12 @@ public sealed class NifModel
         };
     }
 
-    private static Vector3 Unpack(ByteVector3 v) => new(v.X / 127.5f, v.Y / 127.5f, v.Z / 127.5f);
+    private static Vector3 Unpack(ByteVector3 v) => new(Unorm8(v.X), Unorm8(v.Y), Unorm8(v.Z));
+
+    // Normals, tangents and bitangents are stored as unsigned bytes mapping 0..255 to -1..1.
+    // NiflySharp hands the raw byte over as an sbyte, so reinterpret it before scaling; dividing
+    // the signed value directly scrambled every vertex normal and tangent frame.
+    private static float Unorm8(sbyte b) => unchecked((byte)b) / 127.5f - 1;
 
     private static MaterialInfo ReadMaterial(NifFile nif, INiShape shape)
     {
@@ -263,6 +288,7 @@ public sealed class NifModel
                     m.Textures[i] = string.IsNullOrWhiteSpace(ts.Textures[i]?.Content) ? null : ts.Textures[i].Content;
             else if (shader is BSEffectShaderProperty fx)
                 m.Textures[0] = fx.SourceTexture?.Content;
+            if (shader is BSLightingShaderProperty lsp) ReadPbr(lsp, m);
         }
 
         if (shape.HasAlphaProperty && nif.GetBlock(shape.AlphaPropertyRef) is { } alpha)
@@ -274,5 +300,27 @@ public sealed class NifModel
             m.AlphaThreshold = alpha.Threshold / 255f;
         }
         return m;
+    }
+
+    /// <summary>
+    /// Community Shaders marks a TruePBR material with the otherwise unused Menu_Screen flag (SLSF2
+    /// bit 23) and reinterprets several fields; see its TruePBR.cpp and BSLightingShaderMaterialPBR.
+    /// </summary>
+    private static void ReadPbr(BSLightingShaderProperty lsp, MaterialInfo m)
+    {
+        var f2 = Convert.ToUInt32(lsp.ShaderFlags_SSPF2);
+        if ((f2 & (1u << 23)) == 0) return;
+        m.Pbr = true;
+        m.PbrRoughnessScale = lsp.SpecularStrength;
+        m.PbrSpecularLevel = lsp.Glossiness;
+
+        // Fuzz: Soft_Lighting on a single-layer material without hair (Back_Lighting) shading. Its tint
+        // and weight ride in the multilayer parallax fields, which only exist for that shader type.
+        bool Flag(int bit) => (f2 & (1u << bit)) != 0;
+        if (!Flag(24) && !Flag(27) && Flag(25) && lsp.IsTypeMultiLayerParallax)
+        {
+            m.FuzzColor = new Vector3(lsp.ParallaxInnerLayerThickness, lsp.ParallaxRefractionScale, lsp.ParallaxInnerLayerTextureScale.U);
+            m.FuzzWeight = lsp.ParallaxInnerLayerTextureScale.V;
+        }
     }
 }

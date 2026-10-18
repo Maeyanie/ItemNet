@@ -12,6 +12,7 @@ try
         "parity" => Commands.Parity(opts),
         "hashtest" => Commands.HashTest(opts),
         "items" => Commands.Items(opts),
+        "nifdump" => Commands.NifDump(opts),
         "plan" => Commands.Plan(opts),
         "render" => Commands.Render(opts),
         "skintest" => Commands.SkinTest(opts),

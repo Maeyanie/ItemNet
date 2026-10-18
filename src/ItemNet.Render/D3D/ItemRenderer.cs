@@ -64,7 +64,7 @@ internal struct FrameConstants
 [StructLayout(LayoutKind.Sequential)]
 internal struct MeshConstants
 {
-    public Vector4 Flags0, Flags1, Spec, Params, Emissive, UvXform, Clay;
+    public Vector4 Flags0, Flags1, Spec, Params, Emissive, UvXform, Clay, Pbr, Fuzz;
 }
 
 /// <summary>Offscreen D3D11 renderer. One instance can render many scenes; not thread-safe.</summary>
@@ -181,23 +181,28 @@ public sealed class ItemRenderer : IDisposable
             var isClay = clay && m.IsBody;
             var diffuse = _textures.Get(mat.Textures[0], TextureCache.Slot.Diffuse);
             var normal = _textures.Get(mat.Textures[1], TextureCache.Slot.Normal, out var hasNormal);
-            var envMask = _textures.Get(mat.Textures[2], TextureCache.Slot.EnvMask);
-            var glow = _textures.Get(mat.Textures[3], TextureCache.Slot.Glow, out var hasGlow);
+            var glow = _textures.Get(mat.Textures[2], TextureCache.Slot.Glow, out var hasGlow);
             var cube = _textures.Get(mat.Textures[4], TextureCache.Slot.Cube, out var hasCube);
+            // Slot 5 is the env mask, or RMAOS for TruePBR; slot 6 the PBR fuzz/coat features map.
+            var envMask = _textures.Get(mat.Textures[5], mat.Pbr ? TextureCache.Slot.Rmaos : TextureCache.Slot.EnvMask);
+            var features = _textures.Get(mat.Pbr ? mat.Textures[6] : null, TextureCache.Slot.Features, out var hasFeatures);
 
             var alphaMode = mat.AlphaMode switch { Nif.AlphaMode.Test => 1, Nif.AlphaMode.Blend => 2, _ => 0 };
             var constants = new MeshConstants
             {
                 Flags0 = new Vector4(hasNormal ? 1 : 0, mat.ModelSpaceNormals ? 1 : 0,
-                    mat.EnvMap && hasCube && Environment.GetEnvironmentVariable("ITEMNET_DEBUG") != "noenv" ? 1 : 0, mat.Glow && hasGlow ? 1 : 0),
+                    mat.EnvMap && hasCube && !mat.Pbr && Environment.GetEnvironmentVariable("ITEMNET_DEBUG") != "noenv" ? 1 : 0,
+                    (mat.Glow || mat.Pbr) && hasGlow ? 1 : 0),
                 Flags1 = new Vector4(alphaMode, mat.AlphaThreshold, mat.VertexColors ? 1 : 0, isClay ? 1 : 0),
                 Spec = new Vector4(mat.SpecularColor, mat.Specular ? mat.SpecularStrength : 0.15f),
                 Params = new Vector4(mat.Glossiness, mat.EnvMapScale, mat.EmissiveMultiple, mat.Alpha),
                 Emissive = new Vector4(mat.EmissiveColor, 0),
                 UvXform = new Vector4(mat.UvOffset, mat.UvScale.X == 0 ? 1 : mat.UvScale.X, mat.UvScale.Y == 0 ? 1 : mat.UvScale.Y),
                 Clay = new Vector4(settings.ClayColor, Environment.GetEnvironmentVariable("ITEMNET_DEBUG") == "unlit" ? 2 : 1),
+                Pbr = new Vector4(mat.Pbr ? 1 : 0, mat.PbrRoughnessScale, mat.PbrSpecularLevel, mat.FuzzWeight),
+                Fuzz = new Vector4(mat.FuzzColor, hasFeatures ? 1 : 0),
             };
-            list.Add(new GpuMesh(vb, ib, m.Indices.Length, constants, [diffuse, normal, envMask, glow, cube], alphaMode == 2 && !isClay, centroid));
+            list.Add(new GpuMesh(vb, ib, m.Indices.Length, constants, [diffuse, normal, envMask, glow, cube, features], alphaMode == 2 && !isClay, centroid));
         }
         return list;
     }

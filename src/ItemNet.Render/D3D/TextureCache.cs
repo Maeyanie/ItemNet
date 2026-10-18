@@ -9,7 +9,7 @@ namespace ItemNet.Render.D3D;
 /// <summary>Loads DDS textures through the game file system, with neutral fallbacks per slot.</summary>
 public sealed class TextureCache : IDisposable
 {
-    public enum Slot { Diffuse, Normal, EnvMask, Glow, Cube }
+    public enum Slot { Diffuse, Normal, EnvMask, Glow, Cube, Rmaos, Features }
 
     private readonly ID3D11Device _device;
     private readonly IGameFileSystem _fs;
@@ -28,6 +28,8 @@ public sealed class TextureCache : IDisposable
         _defaults[Slot.EnvMask] = Solid(0xFFFFFFFF);
         _defaults[Slot.Glow] = Solid(0xFF000000);
         _defaults[Slot.Cube] = SolidCube(0xFF808080);
+        _defaults[Slot.Rmaos] = Solid(0xFFFF00FF);    // rough, not metallic, no occlusion, F0 = specular level
+        _defaults[Slot.Features] = Solid(0xFFFFFFFF); // fuzz/coat parameters unscaled
     }
 
     public ID3D11ShaderResourceView Get(string? path, Slot slot) => Get(path, slot, out _);

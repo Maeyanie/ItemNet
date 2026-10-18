@@ -139,18 +139,10 @@ public static class SceneBuilder
         else if (src.SkinShader && model.SkinTexture is { } skin && model.Role != ModelRole.Head) swap = skin;
         if (swap is null) return src;
 
-        var tex = (string?[])src.Textures.Clone();
+        var copy = src.Clone();
         for (var i = 0; i < 8; i++)
-            if (!string.IsNullOrEmpty(swap.Paths[i])) tex[i] = swap.Paths[i];
-        return new MaterialInfo
-        {
-            Textures = tex, DoubleSided = src.DoubleSided, ModelSpaceNormals = src.ModelSpaceNormals, SkinShader = src.SkinShader,
-            EnvMap = src.EnvMap, Glow = src.Glow, Specular = src.Specular, VertexColors = src.VertexColors, VertexAlpha = src.VertexAlpha,
-            EffectShader = src.EffectShader, Alpha = src.Alpha, Glossiness = src.Glossiness, SpecularStrength = src.SpecularStrength,
-            SpecularColor = src.SpecularColor, EnvMapScale = src.EnvMapScale, EmissiveColor = src.EmissiveColor,
-            EmissiveMultiple = src.EmissiveMultiple, UvOffset = src.UvOffset, UvScale = src.UvScale,
-            AlphaMode = src.AlphaMode, AlphaThreshold = src.AlphaThreshold,
-        };
+            if (!string.IsNullOrEmpty(swap.Paths[i])) copy.Textures[i] = swap.Paths[i];
+        return copy;
     }
 
     /// <summary>
