@@ -20,18 +20,70 @@ public sealed record DescriptionResult(
     /// <summary>The whole response body, pretty-printed.</summary>
     string FullResponse);
 
-public sealed class VisionException(string message, string? rawResponse = null) : Exception(message)
+public sealed class VisionException(string message, string? rawResponse = null, bool retryable = false, TimeSpan? retryAfter = null)
+    : Exception(message)
 {
     /// <summary>The whole response body when there was one (pretty-print with <see cref="VisionClient.Pretty"/>).</summary>
     public string? RawResponse { get; } = rawResponse;
+    /// <summary>Worth trying again: rate limits, server errors, dropped connections, malformed replies.</summary>
+    public bool Retryable { get; } = retryable;
+    /// <summary>The provider's Retry-After, when it sent one.</summary>
+    public TimeSpan? RetryAfter { get; } = retryAfter;
 }
+
+/// <summary>One failed attempt that is about to be retried.</summary>
+public sealed record RetryNotice(int Attempt, int MaxAttempts, TimeSpan Delay, string Reason);
 
 /// <summary>Sends the prompt and images to an OpenAI-compatible chat-completions endpoint.</summary>
 public sealed partial class VisionClient(HttpClient http)
 {
     public const string ProjectUrl = "https://github.com/Maeyanie/ItemNet";
 
+    private static readonly TimeSpan BaseDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan MaxDelay = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// HTTP statuses worth retrying. 404 is normally final, but OpenRouter and some others return it
+    /// briefly mid-run when a routed provider drops out, so it is retried too.
+    /// </summary>
+    public static bool IsRetryableStatus(int status) => status is 404 or 408 or 409 or 425 or 429 or >= 500;
+
+    /// <summary>
+    /// <see cref="DescribeOnceAsync"/> with up to <see cref="VisionModelConfig.Retries"/> retries and
+    /// exponential backoff (2 s doubling, at most 60 s, with jitter; Retry-After wins when sent).
+    /// Cancelling <paramref name="ct"/> stops at once, including during a wait.
+    /// </summary>
     public async Task<DescriptionResult> DescribeAsync(ProviderConfig provider, VisionModelConfig model, string prompt,
+        IReadOnlyList<byte[]> pngImages, CancellationToken ct = default, Action<RetryNotice>? onRetry = null)
+    {
+        var attempts = 1 + Math.Max(0, model.Retries);
+        for (var attempt = 1; ; attempt++)
+        {
+            Exception failure;
+            try
+            {
+                return await DescribeOnceAsync(provider, model, prompt, pngImages, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) { failure = new VisionException($"Timed out after {model.TimeoutSeconds}s", retryable: true); }
+            catch (HttpRequestException e) { failure = new VisionException("Connection failed: " + e.Message, retryable: true); }
+            catch (IOException e) { failure = new VisionException("Connection failed: " + e.Message, retryable: true); }
+            catch (VisionException e) { failure = e; }
+
+            var v = (VisionException)failure;
+            if (!v.Retryable || attempt >= attempts)
+                throw attempt == 1 ? v : new VisionException($"Gave up after {attempt} attempts. Last error: {v.Message}", v.RawResponse);
+
+            var backoff = BaseDelay * Math.Pow(2, attempt - 1) * (0.75 + Random.Shared.NextDouble() * 0.5);
+            var delay = v.RetryAfter is { } ra ? ra : backoff;
+            if (delay > MaxDelay) delay = MaxDelay;
+            onRetry?.Invoke(new RetryNotice(attempt, attempts, delay, v.Message));
+            await Task.Delay(delay, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>One request, no retries. Failures worth retrying throw a retryable <see cref="VisionException"/>.</summary>
+    public async Task<DescriptionResult> DescribeOnceAsync(ProviderConfig provider, VisionModelConfig model, string prompt,
         IReadOnlyList<byte[]> pngImages, CancellationToken ct = default)
     {
         var body = BuildBody(provider, model, prompt, pngImages);
@@ -51,12 +103,22 @@ public sealed partial class VisionClient(HttpClient http)
         using var response = await http.SendAsync(request, timeout.Token).ConfigureAwait(false);
         var text = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
-            throw new VisionException($"{(int)response.StatusCode} {response.ReasonPhrase}: {Truncate(text, 600)}", text);
+        {
+            var status = (int)response.StatusCode;
+            throw new VisionException($"{status} {response.ReasonPhrase}: {Truncate(text, 600)}", text,
+                IsRetryableStatus(status), RetryAfter(response));
+        }
 
         JsonNode? json;
         try { json = JsonNode.Parse(text); }
-        catch (JsonException) { throw new VisionException("Response was not JSON: " + Truncate(text, 600), text); }
-        if (json?["error"] is { } err) throw new VisionException("Provider error: " + Truncate(err.ToJsonString(), 600), text);
+        catch (JsonException) { throw new VisionException("Response was not JSON: " + Truncate(text, 600), text, retryable: true); }
+        // Errors can also arrive inside a 200, at the top level or on the choice (OpenRouter does both
+        // when an upstream provider fails mid-request). Retry unless the code says it's final.
+        if ((json?["error"] ?? json?["choices"]?[0]?["error"]) is { } err)
+        {
+            var code = err["code"] is JsonValue cv && cv.TryGetValue<int>(out var errCode) ? errCode : (int?)null;
+            throw new VisionException("Provider error: " + Truncate(err.ToJsonString(), 600), text, code is null || IsRetryableStatus(code.Value));
+        }
 
         var message = json?["choices"]?[0]?["message"];
         var content = message?["content"] switch
@@ -66,11 +128,11 @@ public sealed partial class VisionClient(HttpClient http)
             _ => null,
         };
         if (string.IsNullOrWhiteSpace(content))
-            throw new VisionException("The model returned no content (it may have used its whole token budget on reasoning).", text);
+            throw new VisionException("The model returned no content (it may have used its whole token budget on reasoning).", text, retryable: true);
 
         string name, description;
         try { (name, description) = ParseDescription(content); }
-        catch (VisionException e) { throw new VisionException(e.Message, text); } // keep the whole body for the raw view
+        catch (VisionException e) { throw new VisionException(e.Message, text, retryable: true); } // keep the whole body for the raw view
 
         var usage = json?["usage"];
         return new DescriptionResult(name, description, json?["model"]?.GetValue<string>() ?? model.Model, content,
@@ -172,6 +234,14 @@ public sealed partial class VisionClient(HttpClient http)
         var description = Field("description", "desc") ?? "";
         if (description.Length == 0) throw new VisionException("Reply JSON has no description: " + Truncate(content, 400), content);
         return (name.Trim(), description.Trim());
+    }
+
+    private static TimeSpan? RetryAfter(HttpResponseMessage response)
+    {
+        var ra = response.Headers.RetryAfter;
+        if (ra?.Delta is { } d) return d;
+        if (ra?.Date is { } date) return date - DateTimeOffset.UtcNow is { Ticks: > 0 } wait ? wait : TimeSpan.Zero;
+        return null;
     }
 
     private static string Truncate(string s, int n) => s.Length <= n ? s : s[..n] + "…";

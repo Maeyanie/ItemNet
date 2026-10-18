@@ -110,8 +110,47 @@ public sealed class Workspace : IDisposable
     }
 
     public Task<DescriptionResult> DescribeAsync(ProviderConfig provider, VisionModelConfig model, string prompt,
-        IReadOnlyList<RenderedView> views, CancellationToken ct) =>
-        new VisionClient(Http).DescribeAsync(provider, model, prompt, views.Select(v => v.ToPng()).ToList(), ct);
+        IReadOnlyList<RenderedView> views, CancellationToken ct, Action<RetryNotice>? onRetry = null) =>
+        new VisionClient(Http).DescribeAsync(provider, model, prompt, views.Select(v => v.ToPng()).ToList(), ct, onRetry);
+
+    /// <summary>What the prompt template gets to know about an item.</summary>
+    public static ItemFacts Facts(ItemEntry e, ItemGender gender, bool mannequinTextured, IReadOnlyList<RenderedView> views) => new()
+    {
+        Name = e.Name, EditorId = e.EditorId, Kind = e.Kind, BodyAreas = e.BodyAreas,
+        Keywords = string.Join(", ", e.Keywords), Value = e.Value, Weight = e.Weight, ArmorRating = e.ArmorRating,
+        Gender = gender == ItemGender.Female ? "female" : "male", MannequinTextured = mannequinTextured,
+        Views = views.Select(v => v.Label).ToList(),
+    };
+
+    private List<string> WriteCatalogImages(ItemEntry e, ItemGender gender, IReadOnlyList<byte[]> pngs)
+    {
+        var paths = new List<string>();
+        for (var i = 0; i < pngs.Count; i++)
+        {
+            var path = Catalog.ImagePath(e.Key, gender, i);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, pngs[i]);
+            paths.Add(path);
+        }
+        return paths;
+    }
+
+    /// <summary>Saves a generated description to the catalog only, for review before it reaches SkyrimNet.</summary>
+    public void SaveDraft(ItemEntry e, ItemGender gender, string name, string description, string model,
+        IReadOnlyList<RenderedView> views, string renderSettings)
+    {
+        var images = WriteCatalogImages(e, gender, views.Select(v => v.ToPng()).ToList());
+        var entry = new CatalogEntry(e.Key, gender, e.Name, e.EditorId, name, description, "ItemNet:" + model, false,
+            EntryStatus.Draft, images, renderSettings, DateTime.UtcNow);
+        Catalog.Upsert(entry);
+        CatalogEntries[(e.Key, gender)] = entry;
+    }
+
+    public void DiscardDraft(ItemEntry e, ItemGender gender)
+    {
+        Catalog.Delete(e.Key, gender);
+        CatalogEntries.Remove((e.Key, gender));
+    }
 
     /// <summary>
     /// Saves to the catalog, then to the target SkyrimNet DB as a locked row. Backs the DB up once
@@ -122,18 +161,12 @@ public sealed class Workspace : IDisposable
     {
         // Catalog first: it is the source of truth and doesn't depend on the load order.
         var pngs = views.Select(v => v.ToPng()).ToList();
-        var catalogImages = new List<string>();
-        for (var i = 0; i < pngs.Count; i++)
-        {
-            var path = Catalog.ImagePath(e.Key, gender, i);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllBytes(path, pngs[i]);
-            catalogImages.Add(path);
-        }
+        var catalogImages = WriteCatalogImages(e, gender, pngs);
         var label = "ItemNet:" + model + (edited ? "+edited" : "");
-        Catalog.Upsert(new CatalogEntry(e.Key, gender, e.Name, e.EditorId, name, description, label, edited,
-            EntryStatus.Approved, catalogImages, renderSettings, DateTime.UtcNow));
-        RefreshCatalog();
+        var entry = new CatalogEntry(e.Key, gender, e.Name, e.EditorId, name, description, label, edited,
+            EntryStatus.Approved, catalogImages, renderSettings, DateTime.UtcNow);
+        Catalog.Upsert(entry);
+        CatalogEntries[(e.Key, gender)] = entry;
 
         if (TargetDb is null) return new SaveResult("Saved to the ItemNet catalog. No SkyrimNet database selected.", false);
         if (e.RuntimeId is not { } runtimeId) return new SaveResult("Saved to the catalog; the item's plugin isn't active, so SkyrimNet was skipped.", false);
@@ -155,9 +188,10 @@ public sealed class Workspace : IDisposable
             outcome = db.Upsert(new OmniSightWrite(runtimeId, gender, e.Name, name, description, label, visible,
                 views[0].Width, views[0].Height, pngs.Sum(p => (long)p.Length),
                 ContentHash.Compute(Source.Game, Armor(e), gender == ItemGender.Female)));
+            // Refresh just this row; rereading the whole table per save adds up over a batch.
+            if (db.GetItem(runtimeId, gender) is { } row) DbRows[(runtimeId, gender)] = row;
         }
         Catalog.RecordSync(e.Key, gender, TargetDb.FullName, runtimeId);
-        SelectDatabase(TargetDb);
 
         var verb = outcome == WriteOutcome.Inserted ? "Added to" : "Updated in";
         var live = SkyrimNetPaths.GameIsRunning() ? " Skyrim is running: it takes effect at the next cell change or load." : "";

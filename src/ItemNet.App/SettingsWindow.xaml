@@ -81,7 +81,7 @@
                         <Button Content="Remove" Click="OnRemoveModel"/>
                     </StackPanel>
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}"
-                               Text="Blank numbers are left out of the request. Reasoning: low / medium / high, or blank for none (sent as {&quot;reasoning&quot;: {&quot;effort&quot;: …}}). Reasoning models need enough max tokens to finish thinking and still answer."/>
+                               Text="Blank numbers are left out of the request. Reasoning: low / medium / high, or blank for none (sent as {&quot;reasoning&quot;: {&quot;effort&quot;: …}}). Reasoning models need enough max tokens to finish thinking and still answer. Retries: extra attempts after timeouts, dropped connections, 404/408/429/5xx and unusable replies, with backoff."/>
                     <DataGrid x:Name="ModelsGrid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Model" Binding="{Binding Model}" Width="270"/>
@@ -92,6 +92,7 @@
                             <DataGridTextColumn Header="Top K" Binding="{Binding TopK}" Width="55"/>
                             <DataGridTextColumn Header="Reasoning" Binding="{Binding Reasoning}" Width="75"/>
                             <DataGridTextColumn Header="Timeout s" Binding="{Binding Timeout}" Width="70"/>
+                            <DataGridTextColumn Header="Retries" Binding="{Binding Retries}" Width="60"/>
                             <DataGridTextColumn Header="Extra JSON" Binding="{Binding ExtraJson}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>

@@ -1,0 +1,79 @@
+<Window x:Class="ItemNet.App.BatchWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ItemNet.App.ViewModels"
+        Title="ItemNet batch" Width="900" Height="680" MinWidth="640" MinHeight="420"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="True"
+        Background="{DynamicResource ApplicationBackgroundBrush}"
+        Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+    <Window.Resources>
+        <vm:InverseBoolConverter x:Key="Not"/>
+        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+        </Style>
+        <Style x:Key="Secondary" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Top" IsEnabled="{Binding IsRunning, Converter={StaticResource Not}}">
+            <TextBlock Text="{Binding ScopeText}" FontWeight="SemiBold"/>
+            <TextBlock Text="Select several items in the main list (Shift/Ctrl+click) to batch just those; otherwise everything it shows (search and filter) goes in. It's read again when you start."
+                       TextWrapping="Wrap"
+                       Style="{StaticResource Secondary}" Margin="0,2,0,0"/>
+            <TextBlock Text="{Binding RenderText}" Style="{StaticResource Secondary}" Margin="0,2,0,8"/>
+
+            <WrapPanel Margin="0,0,0,6">
+                <TextBlock Text="Gender:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox ItemsSource="{Binding Genders}" SelectedItem="{Binding Gender}" Width="110" Margin="0,0,20,0"/>
+                <TextBlock Text="Model:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" Width="380" Margin="0,0,20,0"/>
+                <TextBlock Text="At once:" VerticalAlignment="Center" Margin="0,0,6,0"
+                           ToolTip="Describe requests in flight at the same time. Renders always run one at a time."/>
+                <ComboBox ItemsSource="{Binding ConcurrencyChoices}" SelectedItem="{Binding Concurrency}" Width="80"/>
+            </WrapPanel>
+            <WrapPanel Margin="0,0,0,6">
+                <CheckBox Content="Skip items ItemNet already did (catalog entry, draft or ItemNet row)" IsChecked="{Binding SkipDone}" Margin="0,0,20,0"
+                          ToolTip="Leave this on to resume a stopped batch."/>
+                <CheckBox Content="Skip hand-edited SkyrimNet entries" IsChecked="{Binding SkipHandEdited}"/>
+            </WrapPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                <RadioButton Content="Save drafts for review" IsChecked="{Binding WriteToSkyrimNet, Converter={StaticResource Not}}" Margin="0,0,20,0"
+                             ToolTip="Results go to the ItemNet catalog only. Review them with the Drafts filter; Ctrl+Enter saves and moves on."/>
+                <RadioButton Content="Write to SkyrimNet as each finishes" IsChecked="{Binding WriteToSkyrimNet}"
+                             ToolTip="Locked rows in the selected SkyrimNet database, like Save. Hand-edited entries stay untouched and get a draft instead."/>
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <Button Content="Start" Command="{Binding StartCommand}" FontWeight="SemiBold" MinWidth="90"
+                    IsEnabled="{Binding IsRunning, Converter={StaticResource Not}}"/>
+            <Button Content="Stop" Command="{Binding StopCommand}" MinWidth="90" IsEnabled="{Binding IsRunning}"/>
+            <Button Content="Retry failed" Command="{Binding RetryFailedCommand}" IsEnabled="{Binding IsRunning, Converter={StaticResource Not}}"
+                    ToolTip="Runs the items that failed in the last batch again."/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <ProgressBar Value="{Binding Progress, Mode=OneWay}" Maximum="100" Height="8"/>
+            <TextBlock Text="{Binding ProgressText}" Margin="0,4,0,0"/>
+            <TextBlock Text="{Binding CostText}" Style="{StaticResource Secondary}"/>
+        </StackPanel>
+
+        <ListBox x:Name="LogList" ItemsSource="{Binding LogLines}" FontFamily="Consolas" FontSize="12"
+                 VirtualizingPanel.IsVirtualizing="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                    <Setter Property="MinHeight" Value="20"/>
+                    <Setter Property="Padding" Value="4,1"/>
+                </Style>
+            </ListBox.ItemContainerStyle>
+        </ListBox>
+    </DockPanel>
+</Window>

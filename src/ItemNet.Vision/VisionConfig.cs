@@ -29,6 +29,8 @@ public sealed class VisionModelConfig
     /// <summary>"low", "medium", "high" or empty/"off" for none. Sent as {"reasoning": {"effort": ...}}.</summary>
     public string? ReasoningEffort { get; set; }
     public int TimeoutSeconds { get; set; } = 300;
+    /// <summary>Extra attempts after a failure worth retrying (timeouts, 404/408/429/5xx, bad replies).</summary>
+    public int Retries { get; set; } = 4;
     /// <summary>Raw JSON merged last into the request body, for anything not covered above.</summary>
     public string? ExtraJson { get; set; }
 

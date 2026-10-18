@@ -5,7 +5,7 @@ using ItemNet.Core.SkyrimNet;
 
 namespace ItemNet.App.ViewModels;
 
-public enum DescriptionState { None, SkyrimNetAuto, UserEdited, ItemNet }
+public enum DescriptionState { None, SkyrimNetAuto, UserEdited, ItemNet, Draft }
 
 /// <summary>One row of the item list, with where each gender's description currently comes from.</summary>
 public sealed partial class ItemRowViewModel(ItemEntry entry) : ObservableObject
@@ -28,9 +28,13 @@ public sealed partial class ItemRowViewModel(ItemEntry entry) : ObservableObject
 
     public void Refresh(Workspace ws)
     {
-        Female = StateOf(ws.DbRow(Entry, ItemGender.Female));
-        Male = StateOf(ws.DbRow(Entry, ItemGender.Male));
+        Female = StateOf(ws, ItemGender.Female);
+        Male = StateOf(ws, ItemGender.Male);
     }
+
+    // A draft waiting for review shows over whatever SkyrimNet currently has.
+    private DescriptionState StateOf(Workspace ws, ItemGender g) =>
+        ws.CatalogEntry(Entry, g) is { Status: Core.Catalog.EntryStatus.Draft } ? DescriptionState.Draft : StateOf(ws.DbRow(Entry, g));
 
     private static DescriptionState StateOf(OmniSightItemRow? row) => row switch
     {
@@ -44,6 +48,7 @@ public sealed partial class ItemRowViewModel(ItemEntry entry) : ObservableObject
     private static string Label(DescriptionState s) => s switch
     {
         DescriptionState.ItemNet => "ItemNet",
+        DescriptionState.Draft => "draft",
         DescriptionState.UserEdited => "edited",
         DescriptionState.SkyrimNetAuto => "auto",
         _ => "",

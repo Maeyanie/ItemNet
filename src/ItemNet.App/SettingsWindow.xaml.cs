@@ -119,7 +119,7 @@ public partial class SettingsWindow : Window
     }
 
     private void OnAddModel(object sender, RoutedEventArgs e) =>
-        _models.Add(new ModelRow { ProviderId = _providers.FirstOrDefault()?.Id ?? "", MaxTokens = "4096", Temperature = "0.7", Timeout = "300" });
+        _models.Add(new ModelRow { ProviderId = _providers.FirstOrDefault()?.Id ?? "", MaxTokens = "4096", Temperature = "0.7", Timeout = "300", Retries = "4" });
 
     private void OnRemoveModel(object sender, RoutedEventArgs e)
     {
@@ -214,7 +214,7 @@ public sealed class ProviderRow : Row
 
 public sealed class ModelRow : Row
 {
-    private string _model = "", _providerId = "", _maxTokens = "", _temperature = "", _topP = "", _topK = "", _reasoning = "", _timeout = "", _extraJson = "";
+    private string _model = "", _providerId = "", _maxTokens = "", _temperature = "", _topP = "", _topK = "", _reasoning = "", _timeout = "", _retries = "", _extraJson = "";
     public string Model { get => _model; set => Set(ref _model, value); }
     public string ProviderId { get => _providerId; set => Set(ref _providerId, value); }
     public string MaxTokens { get => _maxTokens; set => Set(ref _maxTokens, value); }
@@ -223,13 +223,15 @@ public sealed class ModelRow : Row
     public string TopK { get => _topK; set => Set(ref _topK, value); }
     public string Reasoning { get => _reasoning; set => Set(ref _reasoning, value); }
     public string Timeout { get => _timeout; set => Set(ref _timeout, value); }
+    public string Retries { get => _retries; set => Set(ref _retries, value); }
     public string ExtraJson { get => _extraJson; set => Set(ref _extraJson, value); }
 
     public static ModelRow From(VisionModelConfig m) => new()
     {
         Model = m.Model, ProviderId = m.ProviderId, MaxTokens = m.MaxTokens.ToString(CultureInfo.InvariantCulture),
         Temperature = F(m.Temperature), TopP = F(m.TopP), TopK = m.TopK?.ToString(CultureInfo.InvariantCulture) ?? "",
-        Reasoning = m.ReasoningEffort ?? "", Timeout = m.TimeoutSeconds.ToString(CultureInfo.InvariantCulture), ExtraJson = m.ExtraJson ?? "",
+        Reasoning = m.ReasoningEffort ?? "", Timeout = m.TimeoutSeconds.ToString(CultureInfo.InvariantCulture),
+        Retries = m.Retries.ToString(CultureInfo.InvariantCulture), ExtraJson = m.ExtraJson ?? "",
     };
 
     public VisionModelConfig ToConfig()
@@ -241,7 +243,7 @@ public sealed class ModelRow : Row
             Model = Model.Trim(), ProviderId = ProviderId.Trim(), MaxTokens = Int(MaxTokens) ?? 4096,
             Temperature = Dbl(Temperature), TopP = Dbl(TopP), TopK = Int(TopK),
             ReasoningEffort = string.IsNullOrWhiteSpace(Reasoning) ? null : Reasoning.Trim(),
-            TimeoutSeconds = Int(Timeout) ?? 300, ExtraJson = string.IsNullOrWhiteSpace(ExtraJson) ? null : ExtraJson,
+            TimeoutSeconds = Int(Timeout) ?? 300, Retries = Math.Max(0, Int(Retries) ?? 4), ExtraJson = string.IsNullOrWhiteSpace(ExtraJson) ? null : ExtraJson,
         };
     }
 }

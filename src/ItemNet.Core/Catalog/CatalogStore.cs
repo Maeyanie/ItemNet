@@ -107,6 +107,16 @@ public sealed class CatalogStore : IDisposable
         cmd.ExecuteNonQuery();
     }
 
+    public void Delete(FormKey key, ItemGender gender)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM entries WHERE plugin = $p AND local_id = $id AND gender = $g";
+        cmd.Parameters.AddWithValue("$p", key.ModKey.FileName.String);
+        cmd.Parameters.AddWithValue("$id", (long)key.ID);
+        cmd.Parameters.AddWithValue("$g", G(gender));
+        cmd.ExecuteNonQuery();
+    }
+
     public void RecordSync(FormKey key, ItemGender gender, string dbFile, uint runtimeId)
     {
         using var cmd = _conn.CreateCommand();

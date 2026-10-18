@@ -16,7 +16,7 @@ using ItemNet.Vision;
 
 namespace ItemNet.App.ViewModels;
 
-public enum StatusFilter { All, NoDescription, SkyrimNetAuto, UserEdited, ItemNet }
+public enum StatusFilter { All, NoDescription, SkyrimNetAuto, UserEdited, ItemNet, Drafts }
 public enum MannequinChoice { Textured, Clay, None }
 
 public sealed partial class MainViewModel : ObservableObject
@@ -65,6 +65,44 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _rawReply = "";
     [ObservableProperty] private bool _isDescribing;
     [ObservableProperty] private string _itemCount = "";
+    [ObservableProperty] private bool _isDraft;
+
+    private readonly Dictionary<Mutagen.Bethesda.Plugins.FormKey, ItemRowViewModel> _rowsByKey = new();
+
+    // ---- for the batch window ------------------------------------------------------------------
+
+    internal Workspace? Workspace => _ws;
+    /// <summary>The rows the list currently shows (search and filter applied), in display order.</summary>
+    internal List<ItemRowViewModel> VisibleRows() => ItemsView.Cast<ItemRowViewModel>().ToList();
+
+    private HashSet<ItemRowViewModel> _multiSelection = [];
+
+    /// <summary>The list's selected rows; the view keeps this current (SelectedItems isn't bindable).</summary>
+    internal void SetMultiSelection(IEnumerable<ItemRowViewModel> rows) => _multiSelection = rows.ToHashSet();
+
+    /// <summary>What a batch works on: the selected rows when several are selected, else every visible row.</summary>
+    internal List<ItemRowViewModel> BatchRows(out bool fromSelection)
+    {
+        var visible = VisibleRows();
+        var selected = _multiSelection.Count > 1 ? visible.Where(_multiSelection.Contains).ToList() : [];
+        fromSelection = selected.Count > 1;
+        return fromSelection ? selected : visible;
+    }
+    internal SceneOptions BatchSceneOptions() => CurrentSceneOptions();
+    internal string MannequinLabel => Mannequin.ToString();
+
+    /// <summary>Updates the F/M labels of rows a batch touched, without re-filtering under the user.</summary>
+    internal void RefreshRow(Core.Items.ItemEntry e)
+    {
+        if (_ws is not null && _rowsByKey.TryGetValue(e.Key, out var row)) row.Refresh(_ws);
+    }
+
+    /// <summary>Re-applies the filter, e.g. once a batch finishes.</summary>
+    internal void RefreshList()
+    {
+        ItemsView.Refresh();
+        UpdateCount();
+    }
 
     public MainViewModel(AppSettings settings)
     {
@@ -95,6 +133,7 @@ public sealed partial class MainViewModel : ObservableObject
         var old = _ws;
         _ws = null;
         Items.Clear();
+        _rowsByKey.Clear();
         Selected = null;
         try
         {
@@ -111,6 +150,7 @@ public sealed partial class MainViewModel : ObservableObject
                 var row = new ItemRowViewModel(e);
                 row.Refresh(_ws);
                 Items.Add(row);
+                _rowsByKey[e.Key] = row;
             }
             UpdateCount();
             StatusText = $"{_ws.Items.Count:N0} items from {_ws.Source.Game.Plugins.Count} plugins."
@@ -154,6 +194,7 @@ public sealed partial class MainViewModel : ObservableObject
             StatusFilter.SkyrimNetAuto => s == DescriptionState.SkyrimNetAuto,
             StatusFilter.UserEdited => s == DescriptionState.UserEdited,
             StatusFilter.ItemNet => s == DescriptionState.ItemNet,
+            StatusFilter.Drafts => s == DescriptionState.Draft,
             _ => true,
         };
     }
@@ -292,6 +333,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         RawReply = DescribeInfo = "";
         _generatedName = _generatedDescription = _generatedModel = "";
+        IsDraft = false;
         if (_ws is null || Selected is null) { SuggestedName = Description = ""; return; }
         if (_ws.CatalogEntry(Selected.Entry, Gender) is { } c)
         {
@@ -300,7 +342,10 @@ public sealed partial class MainViewModel : ObservableObject
             _generatedModel = c.Model.StartsWith("ItemNet:", StringComparison.Ordinal) ? c.Model["ItemNet:".Length..].Replace("+edited", "") : c.Model;
             _generatedName = c.Edited ? "" : c.SuggestedName;
             _generatedDescription = c.Edited ? "" : c.Description;
-            DescribeInfo = $"From the ItemNet catalog ({c.Model}, {c.Updated.ToLocalTime():g}).";
+            IsDraft = c.Status == Core.Catalog.EntryStatus.Draft;
+            DescribeInfo = IsDraft
+                ? $"Draft from a batch ({_generatedModel}, {c.Updated.ToLocalTime():g}). Save to approve (Ctrl+Enter saves and moves on), or discard it."
+                : $"From the ItemNet catalog ({c.Model}, {c.Updated.ToLocalTime():g}).";
         }
         else SuggestedName = Description = "";
     }
@@ -327,14 +372,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (_views is null || _viewsKey != CurrentViewsKey()) await RenderAsync();
         if (_views is null) return;
 
-        var e = Selected.Entry;
-        var facts = new ItemFacts
-        {
-            Name = e.Name, EditorId = e.EditorId, Kind = e.Kind, BodyAreas = e.BodyAreas,
-            Keywords = string.Join(", ", e.Keywords), Value = e.Value, Weight = e.Weight, ArmorRating = e.ArmorRating,
-            Gender = IsFemale ? "female" : "male", MannequinTextured = Mannequin == MannequinChoice.Textured,
-            Views = _views.Select(v => v.Label).ToList(),
-        };
+        var facts = Workspace.Facts(Selected.Entry, Gender, Mannequin == MannequinChoice.Textured, _views);
         string prompt;
         try { prompt = PromptTemplate.Render(Settings.PromptTemplate ?? PromptTemplate.Default, facts); }
         catch (Exception ex) { MessageBox.Show(ex.Message, "Prompt template"); return; }
@@ -345,7 +383,10 @@ public sealed partial class MainViewModel : ObservableObject
         _describeCts = new CancellationTokenSource();
         try
         {
-            var r = await _ws.DescribeAsync(provider, model, prompt, _views, _describeCts.Token);
+            var dispatcher = Application.Current.Dispatcher;
+            var r = await _ws.DescribeAsync(provider, model, prompt, _views, _describeCts.Token, n =>
+                dispatcher.InvokeAsync(() => DescribeInfo =
+                    $"Attempt {n.Attempt} of {n.MaxAttempts} failed, retrying in {n.Delay.TotalSeconds:F0}s: {n.Reason}"));
             SuggestedName = _generatedName = r.SuggestedName;
             Description = _generatedDescription = r.Description;
             _generatedModel = model.Model;
@@ -373,18 +414,45 @@ public sealed partial class MainViewModel : ObservableObject
     // ---- save ----------------------------------------------------------------------------------
 
     [RelayCommand]
-    private void Save()
+    private void Save() => SaveCore();
+
+    /// <summary>
+    /// Saves, then moves to the item that followed in the list (review mode). Bound to Ctrl+Enter.
+    /// </summary>
+    [RelayCommand]
+    private void SaveAndNext()
     {
-        if (_ws is null || Selected is null) return;
+        var before = VisibleRows();
+        var index = Selected is null ? -1 : before.IndexOf(Selected);
+        if (index < 0 || !SaveCore()) return;
+        RefreshList();
+        var after = VisibleRows();
+        var next = index + 1 < before.Count ? before[index + 1] : null;
+        Selected = next is not null && after.Contains(next) ? next : after.ElementAtOrDefault(Math.Min(index, after.Count - 1));
+    }
+
+    [RelayCommand]
+    private void DiscardDraft()
+    {
+        if (_ws is null || Selected is null || !IsDraft) return;
+        _ws.DiscardDraft(Selected.Entry, Gender);
+        Selected.Refresh(_ws);
+        LoadCatalogText();
+        StatusText = "Draft discarded.";
+    }
+
+    private bool SaveCore()
+    {
+        if (_ws is null || Selected is null) return false;
         if (string.IsNullOrWhiteSpace(Description))
         {
             MessageBox.Show("There's no description to save yet.", "ItemNet");
-            return;
+            return false;
         }
         if (_views is null || _viewsKey != CurrentViewsKey())
         {
             MessageBox.Show("The views are out of date; wait for the render to finish.", "ItemNet");
-            return;
+            return false;
         }
         var existing = _ws.DbRow(Selected.Entry, Gender);
         if (existing is { DescriptionModel: "user-edited" })
@@ -392,7 +460,7 @@ public sealed partial class MainViewModel : ObservableObject
             var answer = MessageBox.Show(
                 $"SkyrimNet already has a hand-edited description for this item:\n\n\"{existing.SuggestedName}\": {existing.Description}\n\nReplace it? (The database is backed up before the first save.)",
                 "Replace edited description?", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (answer != MessageBoxResult.Yes) return;
+            if (answer != MessageBoxResult.Yes) return false;
         }
 
         var edited = SuggestedName.Trim() != _generatedName || Description.Trim() != _generatedDescription;
@@ -403,11 +471,14 @@ public sealed partial class MainViewModel : ObservableObject
                 Workspace.DescribeRenderSettings(CurrentSceneOptions(), Settings.RenderSize));
             Selected.Refresh(_ws);
             ShowSkyrimNetEntry();
+            IsDraft = false;
             StatusText = result.Message;
+            return true;
         }
         catch (Exception ex)
         {
             MessageBox.Show("Save failed: " + ex.Message, "ItemNet", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
         }
     }
 

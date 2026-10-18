@@ -36,6 +36,7 @@
                     BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,6">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Content="Batch…" Click="OnBatch" ToolTip="Render and describe everything the list currently shows"/>
                         <Button Content="Reload" Command="{Binding ReloadCommand}"/>
                         <Button Content="Settings…" Click="OnSettings"/>
                     </StackPanel>
@@ -67,6 +68,7 @@
                                   ToolTip="Filter by where the selected gender's description comes from"/>
                     </DockPanel>
                     <ListView ItemsSource="{Binding ItemsView}" SelectedItem="{Binding Selected}"
+                              SelectionMode="Extended" SelectionChanged="OnItemSelectionChanged"
                               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListView.ItemContainerStyle>
                             <!-- The Fluent theme's rows are touch-sized; keep the list dense. Based on
@@ -163,7 +165,12 @@
                             <TextBlock Text="SkyrimNet database:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                             <ComboBox ItemsSource="{Binding Databases}" SelectedItem="{Binding SelectedDatabase}" DisplayMemberPath="Name"
                                       Width="340" Margin="0,0,10,0" ToolTip="Each SkyrimNet playthrough has its own database; the newest is selected by default"/>
-                            <Button Content="Save" Command="{Binding SaveCommand}" MinWidth="90" FontWeight="SemiBold" HorizontalAlignment="Left"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Save" Command="{Binding SaveCommand}" MinWidth="90" FontWeight="SemiBold"/>
+                                <Button Content="Save &amp; next" Command="{Binding SaveAndNextCommand}" ToolTip="Ctrl+Enter: save, then move to the next item in the list"/>
+                                <Button Content="Discard draft" Command="{Binding DiscardDraftCommand}"
+                                        Visibility="{Binding IsDraft, Converter={StaticResource BoolToVis}}"/>
+                            </StackPanel>
                         </DockPanel>
                     </StackPanel>
                 </ScrollViewer>

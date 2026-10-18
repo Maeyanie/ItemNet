@@ -42,6 +42,21 @@ public sealed class AppSettings
     /// <summary>File name of the SkyrimNet DB last chosen; empty means the newest.</summary>
     public string TargetDb { get; set; } = "";
 
+    /// <summary>The batch window's last choices.</summary>
+    public BatchPrefs Batch { get; set; } = new();
+
+    /// <summary>
+    /// Writing straight to SkyrimNet is deliberately not remembered: every batch starts out
+    /// saving drafts, so a forgotten choice can't overwrite descriptions unreviewed.
+    /// </summary>
+    public sealed class BatchPrefs
+    {
+        public int Concurrency { get; set; } = 3;
+        public BatchGender Gender { get; set; } = BatchGender.Female;
+        public bool SkipDone { get; set; } = true;
+        public bool SkipHandEdited { get; set; } = true;
+    }
+
     public static AppSettings Load()
     {
         try
