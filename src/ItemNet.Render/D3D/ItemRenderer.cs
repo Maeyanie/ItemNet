@@ -159,7 +159,7 @@ public sealed class ItemRenderer : IDisposable
     }
 
     private sealed record GpuMesh(ID3D11Buffer Vb, ID3D11Buffer Ib, int IndexCount, MeshConstants Constants,
-        ID3D11ShaderResourceView[] Srvs, bool Blended, Vector3 Centroid);
+        ID3D11ShaderResourceView[] Srvs, bool Blended, bool DepthWrite, Vector3 Centroid);
 
     private List<GpuMesh> Upload(Scene.Scene scene, bool clay, RenderSettings settings)
     {
@@ -202,7 +202,7 @@ public sealed class ItemRenderer : IDisposable
                 Pbr = new Vector4(mat.Pbr ? 1 : 0, mat.PbrRoughnessScale, mat.PbrSpecularLevel, mat.FuzzWeight),
                 Fuzz = new Vector4(mat.FuzzColor, hasFeatures ? 1 : 0),
             };
-            list.Add(new GpuMesh(vb, ib, m.Indices.Length, constants, [diffuse, normal, envMask, glow, cube, features], alphaMode == 2 && !isClay, centroid));
+            list.Add(new GpuMesh(vb, ib, m.Indices.Length, constants, [diffuse, normal, envMask, glow, cube, features], alphaMode == 2 && !isClay, mat.DepthWrite, centroid));
         }
         return list;
     }
@@ -249,9 +249,13 @@ public sealed class ItemRenderer : IDisposable
         _ctx.OMSetBlendState(_opaque);
         _ctx.OMSetDepthStencilState(_depthWrite);
         foreach (var m in opaque) DrawMesh(m);
+        // Blended shapes go back to front; each writes depth only if its shader says so, as in game.
         _ctx.OMSetBlendState(_alphaBlend);
-        _ctx.OMSetDepthStencilState(_depthRead);
-        foreach (var m in blended) DrawMesh(m);
+        foreach (var m in blended)
+        {
+            _ctx.OMSetDepthStencilState(m.DepthWrite ? _depthWrite : _depthRead);
+            DrawMesh(m);
+        }
     }
 
     private void DrawMesh(GpuMesh m)

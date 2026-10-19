@@ -145,7 +145,7 @@ internal static class Shaders
             float4 base = Diffuse.Sample(Samp, i.uv);
             if (Flags1.z > 0) base *= i.col;
             float alpha = base.a * Params.w;
-            if (Flags1.x == 1 && alpha < Flags1.y) discard;
+            if (Flags1.x >= 1 && alpha < Flags1.y) discard; // test, or blend with a test threshold
 
             if (ClayColor.w > 1.5) return float4(base.rgb, 1); // debug: unlit diffuse
             float3 albedo = clay ? ClayColor.rgb : base.rgb;

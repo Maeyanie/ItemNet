@@ -26,6 +26,8 @@ public sealed class MaterialInfo
     public Vector3 FuzzColor { get; set; }
     public float FuzzWeight { get; set; }
     public bool DoubleSided { get; set; }
+    /// <summary>Blended shapes: write depth as well (the shader's ZBuffer_Write flag).</summary>
+    public bool DepthWrite { get; set; }
     public bool ModelSpaceNormals { get; set; }
     public bool SkinShader { get; set; }
     public bool EnvMap { get; set; }
@@ -276,6 +278,8 @@ public sealed class NifModel
         {
             m.EffectShader = shader is BSEffectShaderProperty;
             m.DoubleSided = shader.DoubleSided;
+            // SLSF2 ZBuffer_Write: whether a blended shape still writes depth (most clothing and hair do).
+            if (shader is BSLightingShaderProperty zl) m.DepthWrite = (Convert.ToUInt32(zl.ShaderFlags_SSPF2) & 1) != 0;
             m.ModelSpaceNormals = shader.ModelSpace;
             m.SkinShader = shader.IsTypeSkinTint || shader.IsTypeFaceTint;
             m.EnvMap = shader.HasEnvironmentMapping || shader.IsTypeEnvironmentMap;
@@ -304,9 +308,10 @@ public sealed class NifModel
         {
             var blend = alpha.Flags.AlphaBlend;
             var test = alpha.Flags.AlphaTest;
-            m.AlphaMode = test ? AlphaMode.Test : blend ? AlphaMode.Blend : AlphaMode.Opaque;
-            if (blend && test) m.AlphaMode = AlphaMode.Test; // cutout with soft edges; test is the safe choice
-            m.AlphaThreshold = alpha.Threshold / 255f;
+            // Blend wins when both are set (sheer fabric, hair cards): the game blends and still
+            // discards below the threshold. Without the test there's nothing to discard.
+            m.AlphaMode = blend ? AlphaMode.Blend : test ? AlphaMode.Test : AlphaMode.Opaque;
+            m.AlphaThreshold = test ? alpha.Threshold / 255f : 0;
         }
         return m;
     }
