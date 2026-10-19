@@ -45,6 +45,8 @@ public sealed class AppSettings
     /// <summary>The batch window's last choices.</summary>
     public BatchPrefs Batch { get; set; } = new();
 
+    public UiLayout Layout { get; set; } = new();
+
     /// <summary>
     /// Writing straight to SkyrimNet is deliberately not remembered: every batch starts out
     /// saving drafts, so a forgotten choice can't overwrite descriptions unreviewed.

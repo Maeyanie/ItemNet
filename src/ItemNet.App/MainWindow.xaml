@@ -52,7 +52,7 @@
 
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="460" MinWidth="300"/>
+                    <ColumnDefinition x:Name="ListColumn" Width="460" MinWidth="300"/>
                     <ColumnDefinition Width="5"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
@@ -79,7 +79,7 @@
                             </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.View>
-                            <GridView>
+                            <GridView x:Name="ItemGrid">
                                 <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Name}" Width="190"/>
                                 <GridViewColumn Header="Kind" DisplayMemberBinding="{Binding Kind}" Width="75"/>
                                 <GridViewColumn Header="F" DisplayMemberBinding="{Binding FemaleText}" Width="60"/>
@@ -118,7 +118,7 @@
                         </UniformGrid>
                         <TextBlock Text="{Binding RenderWarnings}" Foreground="{DynamicResource SystemFillColorCautionBrush}" TextWrapping="Wrap"/>
 
-                        <Expander Header="SkyrimNet's current entry" Margin="0,8,0,0" IsExpanded="True">
+                        <Expander x:Name="SkyrimNetExpander" Header="SkyrimNet's current entry" Margin="0,8,0,0" IsExpanded="True">
                             <StackPanel Margin="4">
                                 <TextBlock Text="{Binding SkyrimNetSource}" Style="{StaticResource Secondary}"/>
                                 <TextBlock Text="{Binding SkyrimNetName}" FontWeight="SemiBold" Margin="0,4,0,0"/>
@@ -156,7 +156,7 @@
                         <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" AcceptsReturn="True"
                                  MinHeight="110" VerticalScrollBarVisibility="Auto"/>
 
-                        <Expander Header="Model's raw reply" Margin="0,6,0,0">
+                        <Expander x:Name="RawReplyExpander" Header="Model's raw reply" Margin="0,6,0,0">
                             <TextBox Text="{Binding RawReply, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="520"
                                      VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
                         </Expander>
