@@ -156,7 +156,7 @@ public sealed partial class BatchViewModel : ObservableObject
                 action => dispatcher.InvokeAsync(action).Task,
                 ev => dispatcher.InvokeAsync(() => OnEvent(ev)),
                 _cts.Token);
-            Append($"Done: {Drafted + Saved:N0} described, {FailedCount:N0} failed, in {_clock.Elapsed:h\\:mm\\:ss}.");
+            Append($"Done: {Drafted + Saved:N0} described, {FailedCount:N0} failed, in {Duration(_clock.Elapsed)}.");
         }
         catch (OperationCanceledException) { Append($"Stopped after {_finished:N0} of {_total:N0}."); }
         catch (Exception e) { Append("Batch failed: " + e.Message); }
@@ -198,11 +198,16 @@ public sealed partial class BatchViewModel : ObservableObject
     {
         Progress = _total == 0 ? 0 : 100.0 * _finished / _total;
         var remaining = _total - _finished;
-        var eta = _finished == 0 ? "" : $", about {TimeSpan.FromSeconds(_clock.Elapsed.TotalSeconds / _finished * remaining):h\\:mm\\:ss} left";
-        ProgressText = $"{_finished:N0} of {_total:N0} ({Drafted + Saved:N0} done, {FailedCount:N0} failed), {_clock.Elapsed:h\\:mm\\:ss} elapsed{eta}";
-        CostText = _costed == 0 ? "Cost: not reported yet"
-            : $"Cost: ${_cost:F4} so far, ${_cost / _costed:F4} per item, about ${_cost / _costed * remaining:F2} for the rest";
+        var eta = _finished == 0 ? "" : $", about {Duration(TimeSpan.FromSeconds(_clock.Elapsed.TotalSeconds / _finished * remaining))} left";
+        ProgressText = $"{_finished:N0} of {_total:N0} ({Drafted + Saved:N0} done, {FailedCount:N0} failed), {Duration(_clock.Elapsed)} elapsed{eta}";
+        CostText = _costed > 0 ? $"Cost: ${_cost:F4} so far, ${_cost / _costed:F4} per item, about ${_cost / _costed * remaining:F2} for the rest"
+            : Drafted + Saved > 0 ? "Cost: this provider doesn't report it"
+            : "Cost: not reported yet";
     }
+
+    /// <summary>h:mm:ss, with days in front once there are any ("h" alone is the hours part, 0-23).</summary>
+    private static string Duration(TimeSpan t) =>
+        t.TotalDays >= 1 ? $"{(int)t.TotalDays}d {t:hh\\:mm\\:ss}" : $"{t:h\\:mm\\:ss}";
 
     private void Append(string line)
     {
