@@ -166,7 +166,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnSelectedDatabaseChanged(FileInfo? value)
     {
-        if (_ws is null || value?.FullName == _ws.TargetDb?.FullName) return;
+        // While loading, the combo box reports null as its list is refilled; that isn't a choice.
+        // The new workspace has already selected the remembered DB.
+        if (IsLoading || _ws is null || value?.FullName == _ws.TargetDb?.FullName) return;
         _ws.SelectDatabase(value);
         Settings.TargetDb = value?.Name ?? "";
         Settings.Save();
