@@ -16,6 +16,7 @@ try
         "plan" => Commands.Plan(opts),
         "render" => Commands.Render(opts),
         "skintest" => Commands.SkinTest(opts),
+        "sync" => Commands.Sync(opts),
         "upsert" => Commands.Upsert(opts),
         "import-skyrimnet" => Commands.ImportSkyrimNet(opts),
         "prompt" => Commands.Prompt(opts),

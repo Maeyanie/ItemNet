@@ -37,6 +37,8 @@
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                         <Button Content="Batch…" Click="OnBatch" ToolTip="Render and describe everything the list currently shows"/>
+                        <Button Content="Sync…" Click="OnSync"
+                                ToolTip="Write the approved catalog into the selected SkyrimNet database at each item's current ID, e.g. after a load-order change. Shows what would change first."/>
                         <Button Content="Reload" Command="{Binding ReloadCommand}"/>
                         <Button Content="Settings…" Click="OnSettings"/>
                     </StackPanel>

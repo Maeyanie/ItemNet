@@ -484,6 +484,93 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    // ---- sync ----------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Writes the approved catalog into the selected DB at the current runtime IDs, after showing
+    /// what would change. The caller makes sure no batch is running (both write the catalog).
+    /// </summary>
+    internal async Task SyncAsync(Window owner)
+    {
+        if (_ws is null) return;
+        if (_ws.TargetDb is not { } db) { MessageBox.Show(owner, "No SkyrimNet database is selected.", "Sync"); return; }
+
+        IsLoading = true;
+        LoadingText = "Comparing the catalog with SkyrimNet…";
+        Core.Catalog.SyncPlan? plan;
+        try { plan = await Task.Run(_ws.PlanSync); }
+        catch (Exception e) { MessageBox.Show(owner, "Couldn't compare: " + e.Message, "Sync"); return; }
+        finally { IsLoading = false; }
+        if (plan is null) return;
+
+        var summary = SyncSummary(plan, db.Name);
+        if (!plan.HasWork) { MessageBox.Show(owner, summary + "\n\nNothing to do.", "Sync to SkyrimNet"); return; }
+        if (MessageBox.Show(owner, summary + "\n\nGo ahead? The database is backed up first.", "Sync to SkyrimNet",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+        IsLoading = true;
+        LoadingText = "Syncing…";
+        try
+        {
+            var progress = new Progress<string>(t => LoadingText = t);
+            var r = await Task.Run(() => _ws.ApplySync(plan, progress));
+            foreach (var row in Items) row.Refresh(_ws);
+            RefreshList();
+            ShowSkyrimNetEntry();
+            StatusText = $"Synced into {db.Name}: {r.Written} written, {r.Removed} stale rows removed, {r.Moved} hand-edited rows moved."
+                + (r.MissingImages > 0 ? $" {r.MissingImages} catalog images were missing." : "")
+                + (SkyrimNetPaths.GameIsRunning() ? " Skyrim is running: it takes effect at the next cell change or load." : "");
+        }
+        catch (Exception e)
+        {
+            Log.Write("Sync failed: " + e);
+            MessageBox.Show(owner, "Sync failed: " + e.Message, "Sync", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally { IsLoading = false; }
+    }
+
+    private static string SyncSummary(Core.Catalog.SyncPlan plan, string dbName)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Approved catalog entries vs {dbName}:");
+        sb.AppendLine($"  • {plan.Count(Core.Catalog.SyncAction.Write):N0} to write at their current IDs");
+        sb.AppendLine($"  • {plan.Count(Core.Catalog.SyncAction.Current):N0} already in place");
+        if (plan.Count(Core.Catalog.SyncAction.HandEdited) is > 0 and var h) sb.AppendLine($"  • {h:N0} left alone: SkyrimNet has a hand-edited description there");
+        if (plan.Count(Core.Catalog.SyncAction.Inactive) is > 0 and var n) sb.AppendLine($"  • {n:N0} skipped: plugin not active");
+        sb.AppendLine($"Old ItemNet rows to remove, left behind at IDs their items no longer have: {plan.Stale.Count:N0}");
+        if (plan.Stale.Count > 0)
+        {
+            var rewritten = plan.Stale.Count(s => s.MovedTo is not null);
+            sb.AppendLine($"  ({rewritten:N0} of those items are rewritten at their new IDs above"
+                + (rewritten < plan.Stale.Count ? $"; {plan.Stale.Count - rewritten:N0} have no active catalog entry, so SkyrimNet will describe them itself)" : ")"));
+        }
+        sb.AppendLine($"Hand-edited SkyrimNet rows to move back to their items: {plan.Moves.Count:N0}");
+        foreach (var m in plan.Moves.Take(8))
+            sb.AppendLine($"  \"{m.Row.SuggestedName}\" → {m.ItemName} ({OmniSightDb.MakeIdentifier(m.NewRuntimeId, m.Row.Gender)})");
+        if (plan.Moves.Count > 8) sb.AppendLine($"  … and {plan.Moves.Count - 8:N0} more");
+        if (plan.Unplaced.Count > 0)
+        {
+            sb.AppendLine($"Hand-edited rows that seem to have moved but are left where they are: {plan.Unplaced.Count:N0}");
+            foreach (var u in plan.Unplaced.Take(5)) sb.AppendLine("  " + u);
+            if (plan.Unplaced.Count > 5) sb.AppendLine($"  … and {plan.Unplaced.Count - 5:N0} more");
+        }
+        if (plan.Stale.Count > 0)
+        {
+            sb.AppendLine();
+            foreach (var s in plan.Stale.Take(8))
+                sb.AppendLine($"  {OmniSightDb.MakeIdentifier(s.Row.RuntimeFormId, s.Row.Gender)} \"{s.Row.SuggestedName}\": {s.Reason}");
+            if (plan.Stale.Count > 8) sb.AppendLine($"  … and {plan.Stale.Count - 8:N0} more");
+        }
+        var hand = plan.Items.Where(i => i.Action == Core.Catalog.SyncAction.HandEdited).ToList();
+        if (hand.Count > 0)
+        {
+            sb.AppendLine();
+            foreach (var i in hand.Take(5)) sb.AppendLine($"  {i.Entry.GameName}: {i.Note}");
+            if (hand.Count > 5) sb.AppendLine($"  … and {hand.Count - 5:N0} more");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
     // ---- settings ------------------------------------------------------------------------------
 
     public string? SkyrimNetConfigDir() => _ws?.SkyrimNetConfigDir();

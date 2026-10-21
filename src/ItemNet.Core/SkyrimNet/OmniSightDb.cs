@@ -98,8 +98,43 @@ public sealed class OmniSightDb : IDisposable
         return rows;
     }
 
-    public OmniSightItemRow? GetItem(uint runtimeFormId, ItemGender gender) =>
-        ReadItems().FirstOrDefault(r => r.RuntimeFormId == runtimeFormId && r.Gender == gender);
+    public OmniSightItemRow? GetItem(uint runtimeFormId, ItemGender gender)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, subject_identifier, subject_name, suggested_name, description, description_model,
+                   COALESCE(description_locked, 0), content_hash, file_path, capture_time_local
+            FROM omnisight_screenshots WHERE subject_type = 'item' AND subject_identifier = $id
+            """;
+        cmd.Parameters.AddWithValue("$id", MakeIdentifier(runtimeFormId, gender));
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        string? S(int i) => r.IsDBNull(i) ? null : r.GetString(i);
+        return new OmniSightItemRow(r.GetInt64(0), runtimeFormId, gender, S(2), S(3), S(4), S(5), r.GetInt64(6) != 0, S(7), S(8), S(9));
+    }
+
+    /// <summary>Moves an item row to another subject_identifier (a temporary name, or a runtime ID).</summary>
+    public bool Rename(string fromIdentifier, string toIdentifier)
+    {
+        if (!KnownSchemaVersions.Contains(SchemaVersion()))
+            throw new InvalidOperationException($"Unknown SkyrimNet schema version {SchemaVersion()}; refusing to write");
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "UPDATE omnisight_screenshots SET subject_identifier = $to WHERE subject_type = 'item' AND subject_identifier = $from";
+        cmd.Parameters.AddWithValue("$from", fromIdentifier);
+        cmd.Parameters.AddWithValue("$to", toIdentifier);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>Deletes one item row, so SkyrimNet describes whatever item has that ID afresh.</summary>
+    public bool Delete(uint runtimeFormId, ItemGender gender)
+    {
+        if (!KnownSchemaVersions.Contains(SchemaVersion()))
+            throw new InvalidOperationException($"Unknown SkyrimNet schema version {SchemaVersion()}; refusing to write");
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM omnisight_screenshots WHERE subject_type = 'item' AND subject_identifier = $id";
+        cmd.Parameters.AddWithValue("$id", MakeIdentifier(runtimeFormId, gender));
+        return cmd.ExecuteNonQuery() > 0;
+    }
 
     /// <summary>
     /// Inserts or updates one item row as a locked, ItemNet-authored description. An existing row
@@ -132,6 +167,7 @@ public sealed class OmniSightDb : IDisposable
         cmd.Parameters.AddWithValue("$timeIso", now.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture));
         cmd.Parameters.AddWithValue("$ts", now.ToUnixTimeMilliseconds() / 1000.0);
         cmd.Parameters.AddWithValue("$hash", (object?)w.ContentHash ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$replaceHash", w.ReplaceContentHash && w.ContentHash is not null ? 1 : 0);
 
         if (existing is null)
         {
@@ -160,7 +196,8 @@ public sealed class OmniSightDb : IDisposable
                     file_path = $files, image_format = 'png', image_width = $w, image_height = $h, image_size_bytes = $bytes,
                     description = $desc, description_model = $model, description_timestamp = $ts,
                     is_valid = 1, needs_refresh = 0, generation_error = '',
-                    content_hash = COALESCE(content_hash, $hash), suggested_name = $suggested, description_locked = 1
+                    content_hash = CASE WHEN $replaceHash = 1 THEN $hash ELSE COALESCE(content_hash, $hash) END,
+                    suggested_name = $suggested, description_locked = 1
                 WHERE subject_type = $type AND subject_identifier = $id
                 """;
         }
@@ -189,4 +226,9 @@ public sealed record OmniSightWrite(
     int Width,
     int Height,
     long ImageBytes,
-    string? ContentHash);
+    string? ContentHash,
+    /// <summary>
+    /// Overwrite an existing row's content_hash too. A sync onto a slot that held another item
+    /// (after a load-order change) must not keep that item's hash.
+    /// </summary>
+    bool ReplaceContentHash = false);

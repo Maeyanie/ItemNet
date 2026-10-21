@@ -198,6 +198,19 @@ public sealed class Workspace : IDisposable
         return new SaveResult($"Saved. {verb} {TargetDb.Name}.{live}", true);
     }
 
+    /// <summary>What a catalog sync into the selected DB would do; reads only.</summary>
+    public SyncPlan? PlanSync() => TargetDb is null ? null : CatalogSync.Plan(Source.Game, Catalog, TargetDb.FullName);
+
+    /// <summary>Applies a sync plan: backs the DB up (once per session), writes, then rereads its rows.</summary>
+    public SyncResult ApplySync(SyncPlan plan, IProgress<string>? progress = null)
+    {
+        if (_backedUp.Add(plan.DbPath)) OmniSightDb.Backup(plan.DbPath);
+        var result = CatalogSync.Apply(plan, Source.Game, Catalog, SkyrimNet, progress);
+        Log.Write($"Sync into {Path.GetFileName(plan.DbPath)}: {result.Written} written, {result.Removed} stale removed, {result.Moved} hand-edited moved, {result.MissingImages} images missing");
+        if (TargetDb is not null) SelectDatabase(TargetDb);
+        return result;
+    }
+
     /// <summary>SkyrimNet's config folder (for importing providers), highest-priority copy first.</summary>
     public string? SkyrimNetConfigDir() =>
         Source.DataRootsLowestFirst.Reverse()

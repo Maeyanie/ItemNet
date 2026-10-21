@@ -9,6 +9,8 @@ public partial class BatchWindow : Window
 {
     private readonly BatchViewModel _vm;
 
+    public bool IsRunning => _vm.IsRunning;
+
     public BatchWindow(BatchViewModel vm)
     {
         InitializeComponent();

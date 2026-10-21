@@ -71,6 +71,16 @@ public partial class MainWindow : Window
         else _batch.Activate();
     }
 
+    private async void OnSync(object sender, RoutedEventArgs e)
+    {
+        if (_batch?.IsRunning == true)
+        {
+            MessageBox.Show(this, "A batch is running. Let it finish (or stop it) before syncing.", "Sync");
+            return;
+        }
+        await _vm.SyncAsync(this);
+    }
+
     private async void OnSettings(object sender, RoutedEventArgs e)
     {
         var dialog = new SettingsWindow(_vm.Settings.Clone(), _vm.SkyrimNetConfigDir()) { Owner = this };

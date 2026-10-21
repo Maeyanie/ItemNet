@@ -133,6 +133,22 @@ public sealed class CatalogStore : IDisposable
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>Where each entry was last written in one playthrough DB (by file name).</summary>
+    public List<(FormKey Key, ItemGender Gender, uint RuntimeId)> Syncs(string dbFile)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT plugin, local_id, gender, runtime_id FROM syncs WHERE db_file = $db";
+        cmd.Parameters.AddWithValue("$db", Path.GetFileName(dbFile));
+        using var r = cmd.ExecuteReader();
+        var list = new List<(FormKey, ItemGender, uint)>();
+        while (r.Read())
+        {
+            if (!ModKey.TryFromFileName(r.GetString(0), out var mod)) continue;
+            list.Add((new FormKey(mod, (uint)r.GetInt64(1)), r.GetString(2) == "female" ? ItemGender.Female : ItemGender.Male, (uint)r.GetInt64(3)));
+        }
+        return list;
+    }
+
     public List<CatalogEntry> All()
     {
         using var cmd = _conn.CreateCommand();
