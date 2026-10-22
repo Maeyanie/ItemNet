@@ -21,8 +21,13 @@ public sealed record OmniSightItemRow(
 /// <summary>Reads and writes OmniSight item rows in one SkyrimNet playthrough DB.</summary>
 public sealed class OmniSightDb : IDisposable
 {
-    /// <summary>Schema versions this code has been checked against.</summary>
-    public static readonly int[] KnownSchemaVersions = [30];
+    /// <summary>
+    /// Schema versions this code has been checked against. 31 (SkyrimNet beta 28) only adds
+    /// omnisight_screenshots.manual_capture (DEFAULT 0), set for shots the player takes with the
+    /// capture hotkey so automatic captures leave them alone. Inserts leave it at its default, as
+    /// SkyrimNet's own item rows have it; updates keep whatever the row had.
+    /// </summary>
+    public static readonly int[] KnownSchemaVersions = [30, 31];
 
     private readonly SqliteConnection _conn;
     public string Path { get; }

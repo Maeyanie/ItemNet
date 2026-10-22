@@ -48,6 +48,8 @@ public static partial class Commands
             {
                 if (Fnv(input) != row.ContentHash) continue;
                 tally[label] = tally.GetValueOrDefault(label) + 1;
+                // "edid|model" has one separator; more means texture paths were part of the match.
+                if (input.Count(c => c == '|') > 1) tally["  (of those, with textures in the input)"] = tally.GetValueOrDefault("  (of those, with textures in the input)") + 1;
                 hit = true;
                 if (opts.Has("chains"))
                 {
@@ -65,7 +67,7 @@ public static partial class Commands
 
         Console.WriteLine($"Tested {tested} current rows");
         foreach (var (label, n) in tally.OrderByDescending(kv => kv.Value)) Console.WriteLine($"  {n,4}  {label}");
-        Console.WriteLine($"  {tested - tally.Values.Sum(),4}  no candidate matched");
+        Console.WriteLine($"  {tested - tally.Where(kv => !kv.Key.StartsWith(' ')).Sum(kv => kv.Value),4}  no candidate matched");
         foreach (var m in misses.Take(opts.Has("all") ? int.MaxValue : 15)) Console.WriteLine("    miss " + m);
         return 0;
     }
@@ -100,7 +102,7 @@ public static partial class Commands
             texSets.Add(weap.Model);
         }
 
-        var textures = texSets
+        string Suffix(IEnumerable<IModelGetter?> sets) => string.Concat(sets
             .Where(m => m?.AlternateTextures is not null)
             .SelectMany(m => m!.AlternateTextures!)
             .Select(at => at.NewTexture.TryResolve(s.Game.LinkCache))
@@ -112,8 +114,34 @@ public static partial class Commands
             .Select(p => p!)
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
-            .ToList();
-        var texSuffix = string.Concat(textures.Select(t => "|" + t));
+            .Select(t => "|" + t));
+        var texSuffix = Suffix(texSets);
+        // Variants: only the row's own gender, or only the first addon's model of that gender.
+        var genderSets = new List<IModelGetter?>();
+        string? arma0Gender = null;
+        if (rec is IArmorGetter ag)
+        {
+            genderSets.Add(female ? ag.WorldModel?.Female?.Model : ag.WorldModel?.Male?.Model);
+            var addons = ag.Armature.Select(l => l.TryResolve(s.Game.LinkCache)).Where(x => x is not null).ToList();
+            foreach (var a in addons) genderSets.Add(female ? a!.WorldModel?.Female : a!.WorldModel?.Male);
+            var first = addons.FirstOrDefault();
+            arma0Gender = Suffix([female ? first?.WorldModel?.Female ?? first?.WorldModel?.Male : first?.WorldModel?.Male ?? first?.WorldModel?.Female]);
+        }
+        var texGender = Suffix(genderSets);
+        // The same texture sets as their original records, before any plugin overrode them.
+        var texOrigin = string.Concat(texSets
+            .Where(m => m?.AlternateTextures is not null)
+            .SelectMany(m => m!.AlternateTextures!)
+            .Select(at => s.Game.LinkCache.ResolveAllContexts<ITextureSet, ITextureSetGetter>(at.NewTexture.FormKey).LastOrDefault()?.Record)
+            .Where(t => t is not null)
+            .SelectMany(t => new[] { t!.Diffuse, t.NormalOrGloss, t.EnvironmentMaskOrSubsurfaceTint, t.GlowOrDetailMap,
+                                     t.Height, t.Environment, t.Multilayer, t.BacklightMaskOrSpecular })
+            .Select(p => p?.GivenPath)
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Select(p => p!)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .Select(t => "|" + t));
 
         // EditorIDs along the override chain, winner first.
         var contexts = s.Game.LinkCache.ResolveAllContexts<ISkyrimMajorRecord, ISkyrimMajorRecordGetter>(rec.FormKey).ToList();
@@ -126,6 +154,10 @@ public static partial class Commands
             foreach (var (pl, prefix) in edids.Select(e => (e.label, e.value + "|")).Append(("", "")))
             {
                 yield return ($"{pl}{label}+tex", prefix + path + texSuffix);
+                if (texGender != texSuffix) yield return ($"{pl}{label}+texGender", prefix + path + texGender);
+                if (texOrigin != texSuffix) yield return ($"{pl}{label}+texOrigin", prefix + path + texOrigin);
+                if (arma0Gender is not null && arma0Gender != texSuffix && arma0Gender != texGender)
+                    yield return ($"{pl}{label}+texArma0Gender", prefix + path + arma0Gender);
                 yield return ($"{pl}{label}", prefix + path);
                 yield return ($"{pl}{label} lower", (prefix + path).ToLowerInvariant());
             }
