@@ -82,6 +82,33 @@ public static partial class Commands
                 bAlongU += Vector3.Dot(Vector3.Normalize(p.Bitangents[i0]), dPdu);
             }
             Console.WriteLine($"    sum dot with dP/du: tangent {tAlongU:F0}, bitangent {bAlongU:F0}");
+            // Does each triangle's winding agree with its vertex normals? The game culls by winding.
+            int agree = 0, disagree = 0;
+            for (var k = 0; k + 2 < p.Indices.Length; k += 3)
+            {
+                int i0 = p.Indices[k], i1 = p.Indices[k + 1], i2 = p.Indices[k + 2];
+                var face = Vector3.Cross(p.Positions[i1] - p.Positions[i0], p.Positions[i2] - p.Positions[i0]);
+                if (Vector3.Dot(face, p.Normals[i0] + p.Normals[i1] + p.Normals[i2]) >= 0) agree++; else disagree++;
+            }
+            Console.WriteLine($"    winding vs vertex normals: {agree} agree, {disagree} disagree");
+            // Per triangle: UV orientation (mirrored or not) against the stored frame at its first vertex.
+            int uvPos = 0, uvNeg = 0, bU = 0, bNotU = 0, tV = 0, tNotV = 0;
+            for (var k = 0; k + 2 < p.Indices.Length; k += 3)
+            {
+                int i0 = p.Indices[k], i1 = p.Indices[k + 1], i2 = p.Indices[k + 2];
+                var e1 = p.Positions[i1] - p.Positions[i0]; var e2 = p.Positions[i2] - p.Positions[i0];
+                var d1 = p.Uvs[i1] - p.Uvs[i0]; var d2 = p.Uvs[i2] - p.Uvs[i0];
+                var det = d1.X * d2.Y - d2.X * d1.Y;
+                if (MathF.Abs(det) < 1e-12f) continue;
+                if (det > 0) uvPos++; else uvNeg++;
+                var dPdu = (e1 * d2.Y - e2 * d1.Y) / det;
+                var dPdv = (e2 * d1.X - e1 * d2.X) / det;
+                if (Vector3.Dot(p.Bitangents[i0], dPdu) > 0) bU++; else bNotU++;
+                if (Vector3.Dot(p.Tangents[i0], dPdv) > 0) tV++; else tNotV++;
+            }
+            Console.WriteLine($"    UV det +/-: {uvPos}/{uvNeg}; bitangent along +U: {bU}/{bNotU}; tangent along +V: {tV}/{tNotV}");
+            var uMin = p.Uvs.Min(u => u.X); var uMax = p.Uvs.Max(u => u.X); var vMin = p.Uvs.Min(u => u.Y); var vMax = p.Uvs.Max(u => u.Y);
+            Console.WriteLine($"    UV range: u {uMin:F2}..{uMax:F2}, v {vMin:F2}..{vMax:F2}");
         }
         return 0;
     }

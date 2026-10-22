@@ -36,6 +36,8 @@ public static partial class Commands
         foreach (var m in plan.Models)
         {
             Console.WriteLine($"- {m.Role} {m.NifPath} (weight slider: {m.WeightSlider}, from {m.Source}, alt tex {m.AlternateTextures.Count}, skin tex {(m.SkinTexture is null ? "-" : "yes")})");
+            foreach (var (shape, slots) in m.AlternateTextures)
+                Console.WriteLine($"    alt '{shape}': " + string.Join("  ", slots.Paths.Select((p, i) => (p, i)).Where(x => !string.IsNullOrEmpty(x.p)).Select(x => $"[{x.i}] {x.p}")));
             var path = m.WeightSlider ? WeightVariant(m.NifPath, 1) : m.NifPath;
             Describe(s, path);
         }
