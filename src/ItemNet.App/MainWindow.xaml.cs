@@ -15,6 +15,7 @@ public partial class MainWindow : Window
     public MainWindow(MainViewModel vm)
     {
         InitializeComponent();
+        Title = "ItemNet " + App.Version;
         DataContext = _vm = vm;
         RestoreLayout();
         Closing += (_, _) => SaveLayout();

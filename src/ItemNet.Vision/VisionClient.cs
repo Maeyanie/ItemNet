@@ -38,6 +38,7 @@ public sealed record RetryNotice(int Attempt, int MaxAttempts, TimeSpan Delay, s
 public sealed partial class VisionClient(HttpClient http)
 {
     public const string ProjectUrl = "https://github.com/Maeyanie/ItemNet";
+    private static readonly string UserAgent = $"ItemNet/{typeof(VisionClient).Assembly.GetName().Version?.ToString(3)} (+{ProjectUrl})";
 
     private static readonly TimeSpan BaseDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan MaxDelay = TimeSpan.FromSeconds(60);
@@ -93,6 +94,7 @@ public sealed partial class VisionClient(HttpClient http)
         };
         if (!string.IsNullOrEmpty(provider.ApiKey))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", provider.ApiKey);
+        request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
         // OpenRouter attribution headers; other providers ignore them.
         request.Headers.TryAddWithoutValidation("X-Title", "ItemNet");
         request.Headers.TryAddWithoutValidation("HTTP-Referer", ProjectUrl);

@@ -45,6 +45,7 @@ public partial class SettingsWindow : Window
         ThemeBox.Text = settings.Theme;
         CatalogFolder.Text = settings.CatalogFolder;
         ProjectLink.NavigateUri = new Uri(VisionClient.ProjectUrl);
+        VersionText.Text = "Version " + App.BuildVersion;
     }
 
     private void LoadProfiles()

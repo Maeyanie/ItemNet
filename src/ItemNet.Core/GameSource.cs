@@ -40,7 +40,7 @@ public sealed class GameSource : IDisposable
         progress?.Invoke("Indexing archives…");
         fs.IndexArchives(active, profile.GameIni());
         progress?.Invoke("Reading plugins…");
-        var game = GameData.Load(active, fs);
+        var game = GameData.Load(active, fs, GameData.ReadLanguage(profile.GameIni()));
 
         var roots = new List<string> { instance.GameDataPath };
         roots.AddRange(profile.EnabledModsHighestFirst().Reverse().Select(m => Path.Combine(instance.ModsDirectory, m)));
@@ -70,7 +70,7 @@ public sealed class GameSource : IDisposable
         progress?.Invoke("Indexing archives…");
         fs.IndexArchives(active, gameIni);
         progress?.Invoke("Reading plugins…");
-        var game = GameData.Load(active, fs);
+        var game = GameData.Load(active, fs, GameData.ReadLanguage(gameIni));
         return new GameSource
         {
             Description = $"Game folder {gamePath}",

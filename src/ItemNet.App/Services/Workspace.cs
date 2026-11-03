@@ -4,6 +4,7 @@ using System.Text.Json;
 using ItemNet.Core;
 using ItemNet.Core.Catalog;
 using ItemNet.Core.Items;
+using ItemNet.Core.Plugins;
 using ItemNet.Core.SkyrimNet;
 using ItemNet.Render.D3D;
 using ItemNet.Render.Scene;
@@ -52,11 +53,12 @@ public sealed class Workspace : IDisposable
         var items = ItemIndex.Build(source.Game).OrderBy(i => i.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         var ws = new Workspace
         {
-            SourceLabel = source.Description + (underMo2 ? " (launched from MO2)" : ""),
+            SourceLabel = source.Description + (underMo2 ? " (launched from MO2)" : "")
+                          + (source.Game.Language == GameData.DefaultLanguage ? "" : $", {source.Game.Language} names"),
             Source = source, Items = items, SkyrimNet = new SkyrimNetPaths(source),
             Catalog = new CatalogStore(string.IsNullOrWhiteSpace(settings.CatalogFolder) ? AppSettings.Folder : settings.CatalogFolder),
         };
-        Log.Write($"Loaded {items.Count} items from {source.Game.Plugins.Count} plugins; {source.Files.LooseCount} loose and {source.Files.ArchivedCount} archived files");
+        Log.Write($"Loaded {items.Count} items from {source.Game.Plugins.Count} plugins in {source.Game.Language}; {source.Files.LooseCount} loose and {source.Files.ArchivedCount} archived files");
         ws.RefreshCatalog();
         ws.Databases = ws.SkyrimNet.Databases();
         Log.Write($"SkyrimNet databases: {string.Join(", ", ws.Databases.Select(d => d.Name))}");

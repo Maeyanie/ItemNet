@@ -38,12 +38,15 @@ public sealed class GameData : IDisposable
     public ILoadOrder<IModListing<ISkyrimModGetter>> LoadOrder { get; }
     public IReadOnlyList<string> MissingPlugins { get; }
     public TimeSpan LoadTime { get; }
+    /// <summary>The language names are read in (the game's <c>sLanguage</c>, lowercase).</summary>
+    public string Language { get; }
 
-    private GameData(List<PluginInfo> plugins, List<string> missing, TimeSpan time)
+    private GameData(List<PluginInfo> plugins, List<string> missing, TimeSpan time, string language)
     {
         Plugins = plugins;
         MissingPlugins = missing;
         LoadTime = time;
+        Language = language;
         foreach (var p in plugins)
         {
             _byKey[p.ModKey] = p;
@@ -79,7 +82,8 @@ public sealed class GameData : IDisposable
         return order;
     }
 
-    public static GameData Load(IReadOnlyList<string> activePlugins, IGameFileSystem fs)
+    /// <param name="language">The game's <c>sLanguage</c>, lowercase, as in the strings file names.</param>
+    public static GameData Load(IReadOnlyList<string> activePlugins, IGameFileSystem fs, string language = DefaultLanguage)
     {
         var sw = Stopwatch.StartNew();
         var plugins = new List<PluginInfo>();
@@ -91,28 +95,50 @@ public sealed class GameData : IDisposable
             if (path is null) { missing.Add(name); continue; }
             var modKey = ModKey.FromFileName(name);
             var mod = SkyrimMod.CreateFromBinaryOverlay(new ModPath(modKey, path), SkyrimRelease.SkyrimSE,
-                new BinaryReadParameters { StringsParam = StringsLocation(modKey, fs) });
+                new BinaryReadParameters { StringsParam = StringsLocation(modKey, fs, language) });
             var flags = mod.ModHeader.Flags;
             var isLight = modKey.Type == ModType.Light || flags.HasFlag(SkyrimModHeader.HeaderFlag.Small);
             var isMaster = modKey.Type != ModType.Plugin || flags.HasFlag(SkyrimModHeader.HeaderFlag.Master);
             plugins.Add(new PluginInfo(modKey, path, isLight, isMaster, isLight ? light++ : full++, mod));
         }
-        return new GameData(plugins, missing, sw.Elapsed);
+        return new GameData(plugins, missing, sw.Elapsed, language);
+    }
+
+    public const string DefaultLanguage = "english";
+
+    /// <summary>
+    /// The game's language from <c>sLanguage</c> in Skyrim.ini, overridden by SkyrimCustom.ini beside
+    /// it, as the game reads it. English when neither sets one.
+    /// </summary>
+    public static string ReadLanguage(string? gameIni)
+    {
+        var language = DefaultLanguage;
+        if (gameIni is null) return language;
+        foreach (var ini in new[] { gameIni, Path.Combine(Path.GetDirectoryName(gameIni) ?? "", "SkyrimCustom.ini") })
+            if (File.Exists(ini) && IniFile.Load(ini).Get("General", "sLanguage") is { Length: > 0 } value)
+                language = value.Trim().ToLowerInvariant();
+        return language;
     }
 
     /// <summary>
-    /// Mutagen looks for a localized plugin's strings beside the plugin. Read straight from an MO2
-    /// profile, the plugin and its strings can come from different places (cleaned DLC masters in a
-    /// mod, their strings still in the game's archives), which leaves names empty. Point it at
-    /// wherever the winning copy is.
+    /// Where a localized plugin's strings are, in the game's language. Mutagen looks for them beside
+    /// the plugin; read straight from an MO2 profile, the plugin and its strings can come from
+    /// different places (cleaned DLC masters in a mod, their strings still in the game's archives),
+    /// which leaves names empty. Point it at wherever the winning copy is. A plugin with no strings
+    /// in the game's language falls back to English ones rather than coming out blank.
     /// </summary>
-    private static StringsReadParameters? StringsLocation(ModKey modKey, IGameFileSystem fs)
+    private static StringsReadParameters? StringsLocation(ModKey modKey, IGameFileSystem fs, string language)
     {
-        if (fs.Locate($@"strings\{modKey.Name}_english.strings") is not { } where) return null;
-        var dir = Path.GetDirectoryName(where.FullPath)!;
-        return where.InArchive
-            ? new StringsReadParameters { BsaFolderOverride = dir }
-            : new StringsReadParameters { StringsFolderOverride = dir };
+        foreach (var lang in language == DefaultLanguage ? [DefaultLanguage] : new[] { language, DefaultLanguage })
+        {
+            if (fs.Locate($@"strings\{modKey.Name}_{lang}.strings") is not { } where) continue;
+            if (!Enum.TryParse<Language>(lang, ignoreCase: true, out var target)) continue;
+            var dir = Path.GetDirectoryName(where.FullPath)!;
+            return where.InArchive
+                ? new StringsReadParameters { BsaFolderOverride = dir, TargetLanguage = target }
+                : new StringsReadParameters { StringsFolderOverride = dir, TargetLanguage = target };
+        }
+        return null;
     }
 
     public PluginInfo? GetPlugin(ModKey key) => _byKey.GetValueOrDefault(key);

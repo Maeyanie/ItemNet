@@ -141,6 +141,7 @@
                     <TextBlock Margin="0,20,0,0">
                         <Hyperlink x:Name="ProjectLink" RequestNavigate="OnProjectLink">ItemNet on GitHub</Hyperlink>
                     </TextBlock>
+                    <TextBlock x:Name="VersionText" Style="{StaticResource Hint}"/>
                 </StackPanel>
             </TabItem>
         </TabControl>

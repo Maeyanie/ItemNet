@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System.Reflection;
+using System.Windows;
 using System.Windows.Threading;
 using ItemNet.App.Services;
 using ItemNet.App.ViewModels;
@@ -7,11 +8,24 @@ namespace ItemNet.App;
 
 public partial class App : Application
 {
+    /// <summary>"1.0.0", plus the commit the build came from ("1.0.0+10b4cbb") when the SDK recorded one.</summary>
+    public static string BuildVersion { get; } = ShortBuildVersion();
+
+    /// <summary>"1.0.0", for the title bar.</summary>
+    public static string Version => BuildVersion.Split('+')[0];
+
+    private static string ShortBuildVersion()
+    {
+        var v = typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "?";
+        var plus = v.IndexOf('+');
+        return plus >= 0 && v.Length > plus + 8 ? v[..(plus + 8)] : v;
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         Log.Start();
-        Log.Write($"ItemNet {typeof(App).Assembly.GetName().Version} starting; .NET {Environment.Version}; under MO2: {AppSettings.RunningUnderMo2()}");
+        Log.Write($"ItemNet {BuildVersion} starting; .NET {Environment.Version}; under MO2: {AppSettings.RunningUnderMo2()}");
         DispatcherUnhandledException += OnUnhandled;
         AppDomain.CurrentDomain.UnhandledException += (_, a) => Log.Write("Unhandled: " + a.ExceptionObject);
 

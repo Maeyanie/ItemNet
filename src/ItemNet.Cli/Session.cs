@@ -23,7 +23,7 @@ public sealed class Session : IDisposable
             Console.WriteLine(source.Description);
             Console.WriteLine($"Loose index: {fs.LooseCount:N0} files in {fs.LooseIndexTime.TotalSeconds:F1}s");
             Console.WriteLine($"Archive index: {fs.ArchivedCount:N0} files from {fs.ArchivesLoaded.Count} archives in {fs.ArchiveIndexTime.TotalSeconds:F1}s");
-            Console.WriteLine($"Plugins: {source.Game.Plugins.Count} active ({source.Game.Plugins.Count(p => p.IsLight)} light) in {source.Game.LoadTime.TotalSeconds:F1}s");
+            Console.WriteLine($"Plugins: {source.Game.Plugins.Count} active ({source.Game.Plugins.Count(p => p.IsLight)} light) in {source.Game.LoadTime.TotalSeconds:F1}s, strings in {source.Game.Language}");
             foreach (var m in source.Game.MissingPlugins) Console.WriteLine($"  missing: {m}");
         }
         return new Session { Source = source };
