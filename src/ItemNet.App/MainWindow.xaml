@@ -70,8 +70,14 @@
                                   ToolTip="Filter by where the selected gender's description comes from"/>
                     </DockPanel>
                     <ListView ItemsSource="{Binding ItemsView}" SelectedItem="{Binding Selected}"
-                              SelectionMode="Extended" SelectionChanged="OnItemSelectionChanged"
+                              SelectionMode="Extended" SelectionChanged="OnItemSelectionChanged" PreviewKeyDown="OnItemListKeyDown"
                               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Copy name and description" InputGestureText="Ctrl+C" Click="OnCopyDescription"/>
+                                <MenuItem Header="Paste onto selected items" InputGestureText="Ctrl+V" Click="OnPasteDescription"/>
+                            </ContextMenu>
+                        </ListView.ContextMenu>
                         <ListView.ItemContainerStyle>
                             <!-- The Fluent theme's rows are touch-sized; keep the list dense. Based on
                                  the GridView row style: the plain ListViewItem one has no columns. -->

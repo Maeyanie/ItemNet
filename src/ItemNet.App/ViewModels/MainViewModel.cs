@@ -484,6 +484,97 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    // ---- copy and paste -----------------------------------------------------------------------
+
+    /// <summary>A copied name and description, with the model label it carries into new rows.</summary>
+    private sealed record Clip(string Name, string Description, string Model, bool Edited, string From, ItemGender Gender);
+    private Clip? _clip;
+
+    /// <summary>
+    /// Ctrl+C on the item list: takes the selected item's name and description for the shown gender,
+    /// from the editor if it has text, else from SkyrimNet's entry.
+    /// </summary>
+    internal void CopySelected()
+    {
+        if (_ws is null || Selected is null) return;
+        Clip clip;
+        if (!string.IsNullOrWhiteSpace(Description))
+        {
+            var edited = SuggestedName.Trim() != _generatedName || Description.Trim() != _generatedDescription;
+            clip = new Clip(SuggestedName.Trim(), Description.Trim(), string.IsNullOrEmpty(_generatedModel) ? "manual" : _generatedModel,
+                edited, Selected.Name, Gender);
+        }
+        else if (_ws.DbRow(Selected.Entry, Gender) is { Description.Length: > 0 } row)
+        {
+            var model = string.IsNullOrEmpty(row.DescriptionModel) ? "skyrimnet" : row.DescriptionModel.Replace("ItemNet:", "");
+            clip = new Clip(row.SuggestedName ?? "", row.Description!, model, false, Selected.Name, Gender);
+        }
+        else
+        {
+            StatusText = $"{Selected.Name} has no {(IsFemale ? "female" : "male")} description to copy.";
+            return;
+        }
+        _clip = clip;
+        try { Clipboard.SetText($"{clip.Name}\n\n{clip.Description}"); } catch { /* the clipboard can be busy; ours is kept anyway */ }
+        StatusText = $"Copied \"{clip.Name}\" from {clip.From} ({(clip.Gender == ItemGender.Female ? "female" : "male")}). Select items and press Ctrl+V to give them this name and description.";
+    }
+
+    /// <summary>
+    /// Ctrl+V on the item list: gives every selected item the copied name and description. Each is
+    /// rendered for its own images, then saved like Save (catalog, then a locked SkyrimNet row).
+    /// </summary>
+    internal async Task PasteAsync(Window owner)
+    {
+        if (_ws is null) return;
+        if (_clip is not { } clip) { StatusText = "Nothing copied yet: select an item and press Ctrl+C first."; return; }
+        var gender = Gender;
+        var targets = VisibleRows().Where(r => _multiSelection.Contains(r) || r == Selected)
+            .Where(r => !(r.Name == clip.From && gender == clip.Gender && _ws.CatalogEntry(r.Entry, gender)?.Description == clip.Description))
+            .Where(r => r.Entry.HasFemaleModel || r.Entry.HasMaleModel)
+            .ToList();
+        if (targets.Count == 0) { StatusText = "Select the items to paste onto first."; return; }
+
+        var handEdited = targets.Count(t => _ws.DbRow(t.Entry, gender) is { DescriptionModel: "user-edited" });
+        var described = targets.Count(t => _ws.CatalogEntry(t.Entry, gender) is not null);
+        var question = $"Give {targets.Count:N0} item{(targets.Count == 1 ? "" : "s")} the {(gender == ItemGender.Female ? "female" : "male")} name \"{clip.Name}\" and its description?"
+            + "\n\nEach is rendered and saved to the ItemNet catalog and SkyrimNet, like Save."
+            + (described > 0 ? $"\n\n{described:N0} already have an ItemNet description, which will be replaced." : "")
+            + (handEdited > 0 ? $"\n\n{handEdited:N0} have a hand-edited SkyrimNet description, which will be replaced." : "")
+            + (gender != clip.Gender ? $"\n\nNote: this was copied from the {(clip.Gender == ItemGender.Female ? "female" : "male")} side." : "");
+        if (MessageBox.Show(owner, question, "Paste description", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+        var model = clip.Model.EndsWith("+copied", StringComparison.Ordinal) ? clip.Model : clip.Model + "+copied";
+        var scene = CurrentSceneOptions();
+        var renderSettings = Workspace.DescribeRenderSettings(scene, Settings.RenderSize);
+        var failures = new List<string>();
+        IsLoading = true;
+        try
+        {
+            for (var i = 0; i < targets.Count; i++)
+            {
+                var t = targets[i];
+                LoadingText = $"Pasting {i + 1:N0} of {targets.Count:N0}: {t.Name}";
+                try
+                {
+                    var (views, _) = await _ws.RenderAsync(t.Entry, gender, scene, Settings.RenderSize, CancellationToken.None);
+                    _ws.Save(t.Entry, gender, clip.Name, clip.Description, model, clip.Edited, views, renderSettings);
+                    t.Refresh(_ws);
+                }
+                catch (Exception e)
+                {
+                    failures.Add($"{t.Name}: {e.Message}");
+                    Log.Write($"Paste onto {t.Entry.Key} failed: {e}");
+                }
+            }
+        }
+        finally { IsLoading = false; }
+
+        RefreshList();
+        if (Selected is not null && targets.Contains(Selected)) { LoadCatalogText(); ShowSkyrimNetEntry(); }
+        StatusText = $"Pasted \"{clip.Name}\" onto {targets.Count - failures.Count:N0} item{(targets.Count - failures.Count == 1 ? "" : "s")}."
+            + (failures.Count > 0 ? $" {failures.Count} failed: {string.Join("; ", failures.Take(3))}" : "");
+    }
+
     // ---- sync ----------------------------------------------------------------------------------
 
     /// <summary>

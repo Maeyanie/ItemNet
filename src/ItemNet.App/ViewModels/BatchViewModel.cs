@@ -33,6 +33,8 @@ public sealed partial class BatchViewModel : ObservableObject
     [ObservableProperty] private BatchGender _gender = BatchGender.Female;
     [ObservableProperty] private bool _skipDone = true;
     [ObservableProperty] private bool _skipHandEdited = true;
+    [ObservableProperty] private bool _copyToIdentical;
+    [ObservableProperty] private int _copied;
     [ObservableProperty] private bool _writeToSkyrimNet;
     [ObservableProperty] private int _concurrency = 3;
     [ObservableProperty] private VisionModelConfig? _selectedModel;
@@ -56,8 +58,11 @@ public sealed partial class BatchViewModel : ObservableObject
         _gender = prefs.Gender;
         _skipDone = prefs.SkipDone;
         _skipHandEdited = prefs.SkipHandEdited;
+        _copyToIdentical = prefs.CopyToIdentical;
         UpdateScope();
     }
+
+    partial void OnCopyToIdenticalChanged(bool value) { _main.Settings.Batch.CopyToIdentical = value; SavePrefs(); }
 
     partial void OnGenderChanged(BatchGender value) { _main.Settings.Batch.Gender = value; SavePrefs(); }
     partial void OnSkipDoneChanged(bool value) { _main.Settings.Batch.SkipDone = value; SavePrefs(); }
@@ -108,7 +113,19 @@ public sealed partial class BatchViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private Task StartAsync() => RunAsync(BuildJobs(out _));
+    private Task StartAsync()
+    {
+        var jobs = BuildJobs(out _);
+        if (CopyToIdentical && _main.Workspace is { } ws && jobs.Count > 0)
+        {
+            // A fraction of a second for the whole item list; on the UI thread, which owns the caches it reads.
+            jobs = BatchRunner.FoldIdentical(ws, jobs, out var folded);
+            var copies = jobs.Sum(j => j.Copies.Count);
+            Append($"Identical items: {copies:N0} un-described ones will share a result" +
+                   (folded > 0 ? $"; {folded:N0} of them were in this batch and won't be described separately." : "."));
+        }
+        return RunAsync(jobs);
+    }
 
     [RelayCommand]
     private Task RetryFailedAsync() => RunAsync(Failed.ToList());
@@ -140,7 +157,7 @@ public sealed partial class BatchViewModel : ObservableObject
         IsRunning = true;
         Failed.Clear();
         _total = jobs.Count;
-        _finished = Drafted = Saved = FailedCount = _costed = 0;
+        _finished = Drafted = Saved = FailedCount = Copied = _costed = 0;
         _cost = 0;
         _clock.Restart();
         UpdateProgress();
@@ -156,9 +173,15 @@ public sealed partial class BatchViewModel : ObservableObject
                 action => dispatcher.InvokeAsync(action).Task,
                 ev => dispatcher.InvokeAsync(() => OnEvent(ev)),
                 _cts.Token);
-            Append($"Done: {Drafted + Saved:N0} described, {FailedCount:N0} failed, in {Duration(_clock.Elapsed)}.");
+            await DrainEvents(dispatcher);
+            Append($"Done: {Drafted + Saved:N0} described" + (Copied > 0 ? $" (+{Copied:N0} identical)" : "") +
+                   $", {FailedCount:N0} failed, in {Duration(_clock.Elapsed)}.");
         }
-        catch (OperationCanceledException) { Append($"Stopped after {_finished:N0} of {_total:N0}."); }
+        catch (OperationCanceledException)
+        {
+            await DrainEvents(dispatcher);
+            Append($"Stopped after {_finished:N0} of {_total:N0}.");
+        }
         catch (Exception e) { Append("Batch failed: " + e.Message); }
         finally
         {
@@ -169,6 +192,13 @@ public sealed partial class BatchViewModel : ObservableObject
             Log.Write($"Batch end: {_finished}/{_total} finished, {FailedCount} failed, cost {_cost:F4}");
         }
     }
+
+    /// <summary>
+    /// Lets results the workers have already posted reach <see cref="OnEvent"/> before the summary
+    /// line: the batch's own continuation can otherwise run ahead of them.
+    /// </summary>
+    private static Task DrainEvents(System.Windows.Threading.Dispatcher dispatcher) =>
+        dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background).Task;
 
     private void OnEvent(BatchEvent ev)
     {
@@ -185,12 +215,15 @@ public sealed partial class BatchViewModel : ObservableObject
             default:
                 if (ev.Outcome == BatchOutcome.Saved) Saved++; else Drafted++;
                 var note = ev.Outcome == BatchOutcome.KeptAsDraft ? " (kept as a draft: SkyrimNet's entry is hand-edited)" : "";
-                Append($"✓ {ev.Job} → \"{ev.Message}\"{(ev.Cost is { } c ? $"  ${c:F4}" : "")}{note}");
+                Append($"✓ {ev.Job} → \"{ev.Message}\"{(ev.Cost is { } c ? $"  ${c:F4}" : "")}" +
+                       (ev.Copied > 0 ? $"  (+{ev.Copied} identical)" : "") + note);
                 if (ev.Cost is { } cost) { _cost += cost; _costed++; }
+                Copied += ev.Copied;
                 break;
         }
         _finished++;
         _main.RefreshRow(ev.Job.Item);
+        foreach (var c in ev.Job.Copies) _main.RefreshRow(c);
         UpdateProgress();
     }
 
@@ -199,7 +232,8 @@ public sealed partial class BatchViewModel : ObservableObject
         Progress = _total == 0 ? 0 : 100.0 * _finished / _total;
         var remaining = _total - _finished;
         var eta = _finished == 0 ? "" : $", about {Duration(TimeSpan.FromSeconds(_clock.Elapsed.TotalSeconds / _finished * remaining))} left";
-        ProgressText = $"{_finished:N0} of {_total:N0} ({Drafted + Saved:N0} done, {FailedCount:N0} failed), {Duration(_clock.Elapsed)} elapsed{eta}";
+        ProgressText = $"{_finished:N0} of {_total:N0} ({Drafted + Saved:N0} done" + (Copied > 0 ? $", +{Copied:N0} identical" : "") +
+                       $", {FailedCount:N0} failed), {Duration(_clock.Elapsed)} elapsed{eta}";
         CostText = _costed > 0 ? $"Cost: ${_cost:F4} so far, ${_cost / _costed:F4} per item, about ${_cost / _costed * remaining:F2} for the rest"
             : Drafted + Saved > 0 ? "Cost: this provider doesn't report it"
             : "Cost: not reported yet";

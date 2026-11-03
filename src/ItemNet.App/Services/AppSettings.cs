@@ -57,6 +57,7 @@ public sealed class AppSettings
         public BatchGender Gender { get; set; } = BatchGender.Female;
         public bool SkipDone { get; set; } = true;
         public bool SkipHandEdited { get; set; } = true;
+        public bool CopyToIdentical { get; set; }
     }
 
     public static AppSettings Load()

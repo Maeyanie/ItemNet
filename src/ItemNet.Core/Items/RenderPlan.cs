@@ -85,6 +85,27 @@ public static class RenderPlanner
             models, itemSlots, warnings);
     }
 
+    /// <summary>
+    /// What the item looks like when worn, as a string: its meshes for this gender (in addon order,
+    /// with the weight-slider flag), each mesh's alternate texture sets, and the body slots it
+    /// takes. Items with the same key render identically (enchanted copies sharing their base's
+    /// addons), while a remodel with its own mesh differs. Null when nothing would be drawn.
+    /// </summary>
+    public static string? VisualKey(GameData game, IArmorGetter armo, ItemGender gender)
+    {
+        var plan = Plan(game, armo, gender, mannequin: false);
+        if (plan.Models.Count == 0) return null;
+        var sb = new System.Text.StringBuilder().Append(plan.ItemSlots.ToString("X8"));
+        foreach (var m in plan.Models)
+        {
+            sb.Append('|').Append(m.NifPath.ToLowerInvariant()).Append(m.WeightSlider ? "#w" : "");
+            foreach (var (shape, slots) in m.AlternateTextures.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+                sb.Append('{').Append(shape.ToLowerInvariant()).Append('=')
+                  .Append(string.Join(',', slots.Paths.Select(p => p?.ToLowerInvariant() ?? ""))).Append('}');
+        }
+        return sb.ToString();
+    }
+
     /// <summary>The addons the game would equip on this race: every ARMA valid for it, else for its armor race.</summary>
     public static IEnumerable<IArmorAddonGetter> AddonsFor(GameData game, IArmorGetter armo, IRaceGetter race)
     {

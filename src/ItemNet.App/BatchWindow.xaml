@@ -39,6 +39,9 @@
                           ToolTip="Leave this on to resume a stopped batch."/>
                 <CheckBox Content="Skip hand-edited SkyrimNet entries" IsChecked="{Binding SkipHandEdited}"/>
             </WrapPanel>
+            <CheckBox Content="Give each result to identical un-described items too (same meshes and textures), and don't describe those separately"
+                      IsChecked="{Binding CopyToIdentical}" Margin="0,0,0,6"
+                      ToolTip="E.g. every enchanted copy of an armour gets the base item's description. Searches the whole item list, not just the batch. Items ItemNet already did, or hand-edited in SkyrimNet, are left alone."/>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                 <RadioButton Content="Save drafts for review" IsChecked="{Binding WriteToSkyrimNet, Converter={StaticResource Not}}" Margin="0,0,20,0"
                              ToolTip="Results go to the ItemNet catalog only. Review them with the Drafts filter; Ctrl+Enter saves and moves on."/>

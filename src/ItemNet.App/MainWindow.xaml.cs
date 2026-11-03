@@ -54,6 +54,19 @@ public partial class MainWindow : Window
         try { _vm.Settings.Save(); } catch (Exception e) { Services.Log.Write("Saving the layout failed: " + e.Message); }
     }
 
+    // Ctrl+C / Ctrl+V on the list copy an item's name and description and paste them onto the
+    // selection. Only while the list has focus, so the text boxes keep their own clipboard keys.
+    private async void OnItemListKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.Control) return;
+        if (e.Key == Key.C) { _vm.CopySelected(); e.Handled = true; }
+        else if (e.Key == Key.V) { e.Handled = true; await _vm.PasteAsync(this); }
+    }
+
+    private void OnCopyDescription(object sender, RoutedEventArgs e) => _vm.CopySelected();
+
+    private async void OnPasteDescription(object sender, RoutedEventArgs e) => await _vm.PasteAsync(this);
+
     private void OnItemSelectionChanged(object sender, SelectionChangedEventArgs e) =>
         _vm.SetMultiSelection(((ListView)sender).SelectedItems.Cast<ItemRowViewModel>());
 
