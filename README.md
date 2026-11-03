@@ -144,6 +144,9 @@ dotnet publish src/ItemNet.App -c Release -r win-x64 --self-contained -p:Publish
 ```
 The output is `src/ItemNet.App/bin/Release/net10.0-windows/win-x64/publish/ItemNet.exe`.
 
+## Use of AI
+This was mostly written by Claude. The concept, design work, and extensive testing were done by a human.
+
 ## Credits
 - [Mutagen](https://github.com/Mutagen-Modding/Mutagen): plugins, load order, archives (GPL-3.0)
 - [NiflySharp](https://github.com/ousnius/NiflySharp): NIF reading (GPL-3.0)
