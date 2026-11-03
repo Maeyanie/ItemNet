@@ -323,15 +323,16 @@ internal sealed class Framing
         var (min, max) = item;
         if (body is { } b)
         {
-            // Grow small items (rings, circlets) towards a minimum height, staying inside the body.
+            // Grow small items (rings, circlets) towards a minimum height, staying inside the body;
+            // but never cut the item itself, which can rise above it (a helmet hiding the head).
             var bodyHeight = b.max.Z - b.min.Z;
             var want = bodyHeight * settings.MinFrameFraction;
             var have = max.Z - min.Z;
             if (have < want)
             {
                 var grow = (want - have) / 2;
-                var lo = Math.Max(b.min.Z, min.Z - grow);
-                var hi = Math.Min(b.max.Z, max.Z + grow);
+                var lo = Math.Min(min.Z, Math.Max(b.min.Z, min.Z - grow));
+                var hi = Math.Max(max.Z, Math.Min(b.max.Z, max.Z + grow));
                 min = new Vector3(min.X, min.Y, lo);
                 max = new Vector3(max.X, max.Y, hi);
             }

@@ -18,8 +18,9 @@ public static partial class Commands
             return byRt;
         if (FormKey.TryFactory(spec, out var key) && s.Game.LinkCache.TryResolve<IArmorGetter>(key, out var byKey))
             return byKey;
+        // An EditorID an override renamed finds the old version; resolve its key again for the winner.
         if (s.Game.LinkCache.TryResolve<IArmorGetter>(spec, out var byEdid))
-            return byEdid;
+            return s.Game.LinkCache.TryResolve<IArmorGetter>(byEdid.FormKey, out var winner) ? winner : byEdid;
         throw new ArgumentException($"No armour found for '{spec}'");
     }
 
