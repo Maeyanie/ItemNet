@@ -30,6 +30,8 @@ public static partial class Commands
         var gender = opts.Has("male") ? ItemGender.Male : ItemGender.Female;
         var runtimeId = s.Game.ToRuntimeFormId(armo.FormKey) ?? throw new InvalidOperationException("Item's plugin is not active");
 
+        if (OmniSightDb.WriteProblem(dbPath) is { } problem) throw new InvalidOperationException(problem);
+
         using var renderer = new ItemRenderer(s.Files);
         var plan = RenderPlanner.Plan(s.Game, armo, gender);
         var scene = SceneBuilder.Build(plan, s.Files, new SceneOptions());

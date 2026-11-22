@@ -533,6 +533,7 @@ public sealed partial class MainViewModel : ObservableObject
             .Where(r => r.Entry.HasFemaleModel || r.Entry.HasMaleModel)
             .ToList();
         if (targets.Count == 0) { StatusText = "Select the items to paste onto first."; return; }
+        if (_ws.WriteProblem() is { } problem) { MessageBox.Show(owner, problem, "Paste description", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         var handEdited = targets.Count(t => _ws.DbRow(t.Entry, gender) is { DescriptionModel: "user-edited" });
         var described = targets.Count(t => _ws.CatalogEntry(t.Entry, gender) is not null);
@@ -585,6 +586,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (_ws is null) return;
         if (_ws.TargetDb is not { } db) { MessageBox.Show(owner, "No SkyrimNet database is selected.", "Sync"); return; }
+        if (_ws.WriteProblem() is { } problem) { MessageBox.Show(owner, problem, "Sync", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         IsLoading = true;
         LoadingText = "Comparing the catalog with SkyrimNet…";

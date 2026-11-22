@@ -173,6 +173,10 @@ public sealed class Workspace : IDisposable
         if (TargetDb is null) return new SaveResult("Saved to the ItemNet catalog. No SkyrimNet database selected.", false);
         if (e.RuntimeId is not { } runtimeId) return new SaveResult("Saved to the catalog; the item's plugin isn't active, so SkyrimNet was skipped.", false);
 
+        // Before the backup and the image files, which would replace what SkyrimNet's row shows.
+        if (WriteProblem() is { } problem)
+            throw new InvalidOperationException($"{problem}\n\nThe description is saved in the ItemNet catalog, and Sync… can write it later.");
+
         if (_backedUp.Add(TargetDb.FullName)) OmniSightDb.Backup(TargetDb.FullName);
 
         Directory.CreateDirectory(SkyrimNet.ImageWriteDirectory);
@@ -200,12 +204,16 @@ public sealed class Workspace : IDisposable
         return new SaveResult($"Saved. {verb} {TargetDb.Name}.{live}", true);
     }
 
+    /// <summary>Why the selected DB can't be written to, or null if it can (or none is selected).</summary>
+    public string? WriteProblem() => TargetDb is null ? null : OmniSightDb.WriteProblem(TargetDb.FullName);
+
     /// <summary>What a catalog sync into the selected DB would do; reads only.</summary>
     public SyncPlan? PlanSync() => TargetDb is null ? null : CatalogSync.Plan(Source.Game, Catalog, TargetDb.FullName);
 
     /// <summary>Applies a sync plan: backs the DB up (once per session), writes, then rereads its rows.</summary>
     public SyncResult ApplySync(SyncPlan plan, IProgress<string>? progress = null)
     {
+        if (OmniSightDb.WriteProblem(plan.DbPath) is { } problem) throw new InvalidOperationException(problem);
         if (_backedUp.Add(plan.DbPath)) OmniSightDb.Backup(plan.DbPath);
         var result = CatalogSync.Apply(plan, Source.Game, Catalog, SkyrimNet, progress);
         Log.Write($"Sync into {Path.GetFileName(plan.DbPath)}: {result.Written} written, {result.Removed} stale removed, {result.Moved} hand-edited moved, {result.MissingImages} images missing");

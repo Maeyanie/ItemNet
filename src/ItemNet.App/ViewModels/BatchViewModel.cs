@@ -145,6 +145,11 @@ public sealed partial class BatchViewModel : ObservableObject
         var provider = _main.Settings.Providers.FirstOrDefault(p => p.Id == model.ProviderId);
         if (provider is null) { MessageBox.Show($"The model's provider '{model.ProviderId}' isn't configured.", "ItemNet"); return; }
         if (WriteToSkyrimNet && ws.TargetDb is null) { MessageBox.Show("No SkyrimNet database is selected.", "ItemNet"); return; }
+        if (WriteToSkyrimNet && ws.WriteProblem() is { } problem)
+        {
+            MessageBox.Show(problem + "\n\nYou can still run the batch with \"Save drafts for review\".", "ItemNet", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
 
         var settings = new BatchSettings
         {

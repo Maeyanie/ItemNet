@@ -22,12 +22,18 @@ public sealed record OmniSightItemRow(
 public sealed class OmniSightDb : IDisposable
 {
     /// <summary>
-    /// Schema versions this code has been checked against. 31 (SkyrimNet beta 28) only adds
-    /// omnisight_screenshots.manual_capture (DEFAULT 0), set for shots the player takes with the
-    /// capture hotkey so automatic captures leave them alone. Inserts leave it at its default, as
-    /// SkyrimNet's own item rows have it; updates keep whatever the row had.
+    /// Schema versions this code has been checked against:
+    /// <list type="bullet">
+    /// <item>31 (SkyrimNet beta 28) adds omnisight_screenshots.manual_capture (DEFAULT 0), set for shots
+    /// the player takes with the capture hotkey so automatic captures leave them alone.</item>
+    /// <item>32 adds omnisight_screenshots.rendered (DEFAULT 0), set for actor and outfit captures
+    /// that Phantasm rendered.</item>
+    /// <item>33 (SkyrimNet 1.3.1) adds agent chat history, and doesn't touch OmniSight.</item>
+    /// </list>
+    /// Inserts leave both new columns at their defaults, as SkyrimNet's own item rows have them;
+    /// updates keep whatever the row had.
     /// </summary>
-    public static readonly int[] KnownSchemaVersions = [30, 31];
+    public static readonly int[] KnownSchemaVersions = [30, 31, 32, 33];
 
     private readonly SqliteConnection _conn;
     public string Path { get; }
@@ -63,6 +69,34 @@ public sealed class OmniSightDb : IDisposable
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = "SELECT MAX(version) FROM schema_migrations";
         return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Why this version of ItemNet mustn't write to the DB, or null if it can. Callers ask before
+    /// anything with a side effect (backup, image files, paid requests); each write checks again.
+    /// </summary>
+    public static string? WriteProblem(string dbPath)
+    {
+        using var db = new OmniSightDb(dbPath);
+        return db.WriteProblem();
+    }
+
+    public string? WriteProblem()
+    {
+        var version = SchemaVersion();
+        if (KnownSchemaVersions.Contains(version)) return null;
+        var oldest = KnownSchemaVersions.Min();
+        var advice = version < oldest
+            ? "loading that playthrough with a current SkyrimNet upgrades it"
+            : "check for an ItemNet update";
+        return $"This SkyrimNet database has schema version {version}. This ItemNet only knows versions " +
+               $"{oldest} to {KnownSchemaVersions.Max()}, so it won't write to it; {advice}.";
+    }
+
+    /// <summary>Throws if <see cref="WriteProblem()"/> finds one.</summary>
+    public void EnsureWritable()
+    {
+        if (WriteProblem() is { } problem) throw new InvalidOperationException(problem);
     }
 
     public static bool TryParseIdentifier(string identifier, out uint formId, out ItemGender gender)
@@ -121,8 +155,7 @@ public sealed class OmniSightDb : IDisposable
     /// <summary>Moves an item row to another subject_identifier (a temporary name, or a runtime ID).</summary>
     public bool Rename(string fromIdentifier, string toIdentifier)
     {
-        if (!KnownSchemaVersions.Contains(SchemaVersion()))
-            throw new InvalidOperationException($"Unknown SkyrimNet schema version {SchemaVersion()}; refusing to write");
+        EnsureWritable();
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = "UPDATE omnisight_screenshots SET subject_identifier = $to WHERE subject_type = 'item' AND subject_identifier = $from";
         cmd.Parameters.AddWithValue("$from", fromIdentifier);
@@ -133,8 +166,7 @@ public sealed class OmniSightDb : IDisposable
     /// <summary>Deletes one item row, so SkyrimNet describes whatever item has that ID afresh.</summary>
     public bool Delete(uint runtimeFormId, ItemGender gender)
     {
-        if (!KnownSchemaVersions.Contains(SchemaVersion()))
-            throw new InvalidOperationException($"Unknown SkyrimNet schema version {SchemaVersion()}; refusing to write");
+        EnsureWritable();
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = "DELETE FROM omnisight_screenshots WHERE subject_type = 'item' AND subject_identifier = $id";
         cmd.Parameters.AddWithValue("$id", MakeIdentifier(runtimeFormId, gender));
@@ -148,8 +180,7 @@ public sealed class OmniSightDb : IDisposable
     /// </summary>
     public WriteOutcome Upsert(OmniSightWrite w)
     {
-        if (!KnownSchemaVersions.Contains(SchemaVersion()))
-            throw new InvalidOperationException($"Unknown SkyrimNet schema version {SchemaVersion()}; refusing to write");
+        EnsureWritable();
 
         var identifier = MakeIdentifier(w.RuntimeFormId, w.Gender);
         var existing = GetItem(w.RuntimeFormId, w.Gender);

@@ -40,8 +40,8 @@ wrong on yours, please [open an issue](https://github.com/Maeyanie/ItemNet/issue
 
 ## Requirements
 - Windows 10 or 11 with a Direct3D 11 GPU.
-- Skyrim Special Edition / Anniversary Edition with SkyrimNet. Tested with SkyrimNet beta 27 and
-  beta 28 (database schema versions 30 and 31); ItemNet refuses to write to a schema it doesn't know.
+- Skyrim Special Edition / Anniversary Edition with SkyrimNet. Works with SkyrimNet beta 27
+  through 1.3.1 (database schema versions 30 to 33); ItemNet refuses to write to a schema it doesn't know.
 - An API key for a vision-capable model, unless you run one locally.
 
 ## Installing

@@ -190,6 +190,7 @@ public static class CatalogSync
     {
         int written = 0, removed = 0, moved = 0, missingImages = 0;
         using var db = new OmniSightDb(plan.DbPath, readOnly: false);
+        db.EnsureWritable();
         foreach (var s in plan.Stale)
             if (db.Delete(s.Row.RuntimeFormId, s.Row.Gender)) removed++;
 
